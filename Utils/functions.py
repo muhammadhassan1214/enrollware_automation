@@ -111,13 +111,26 @@ def create_xpath(title):
 
 def get_order_data(driver):
     try:
+        order_data = []
         training_site = get_element_text(driver, (By.XPATH, create_xpath('Training Site'))).strip()
         name = get_element_text(driver, (By.XPATH, create_xpath('Name/Address')))
         name = name.split('\n')[0].strip() if "\n" in name else name.strip()
-        quantity = get_element_text(driver, (By.XPATH, f"{create_xpath('Products')}//td[1]")).strip()
-        product_code = get_element_text(driver, (By.XPATH, f"{create_xpath('Products')}//td[2]")).strip()
-        course_name = get_element_text(driver, (By.XPATH, f"{create_xpath('Products')}//td[3]")).strip()
-        return training_site, name, quantity, product_code, course_name
+        num_of_orders = int(len(driver.find_elements(By.XPATH, f"{create_xpath('Products')}//tr"))) - 1
+        quantity_ele = driver.find_elements(By.XPATH, f"{create_xpath('Products')}//td[1]")
+        product_code_ele = driver.find_elements(By.XPATH, f"{create_xpath('Products')}//td[2]")
+        course_name_ele = driver.find_elements(By.XPATH, f"{create_xpath('Products')}//td[3]")
+        for i in range(num_of_orders):
+            quantity = quantity_ele[i].text.strip()
+            product_code = product_code_ele[i].text.strip()
+            course_name = course_name_ele[i].text.strip()
+            order_data.append({
+                "training_site": training_site,
+                "name": name,
+                "quantity": quantity,
+                "product_code": product_code,
+                "course_name": course_name
+            })
+        return order_data, num_of_orders
     except Exception as e:
         print(f"Error processing row: {e}")
         raise e
@@ -167,6 +180,10 @@ def go_back(driver):
 
 def assign_to_instructor(driver, name, quantity, product_code):
     try:
+        time.sleep(2)
+        available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
+        click_element_by_js(driver, (By.XPATH, available_course_selector))
+        time.sleep(2)
         click_element_by_js(driver, (By.XPATH, f"//div/a[contains(text(), 'Assign to Instructor')]"))
         time.sleep(2)
         select_by_text(driver, (By.ID, "RoleId"), 'TC Admin')
@@ -182,15 +199,21 @@ def assign_to_instructor(driver, name, quantity, product_code):
         click_element_by_js(driver, (By.ID, "btnMoveNext"))
         time.sleep(2)
         input_element(driver, (By.ID, "qty1"), quantity)
+        time.sleep(1)
         click_element_by_js(driver, (By.ID, "btnConfirm"))
         time.sleep(2)
         click_element_by_js(driver, (By.ID, "btnComplete"))
+        time.sleep(2)
+        click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']"))
     except Exception as e:
         print(f"Error assigning to instructor: {e}")
         pass
 
 def assign_to_training_center(driver, quantity, product_code, training_site):
     try:
+        available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
+        click_element_by_js(driver, (By.XPATH, available_course_selector))
+        time.sleep(2)
         click_element_by_js(driver, (By.XPATH, f"//div/a[contains(text(), 'Assign to Training Site')]"))
         time.sleep(2)
         select_by_text(driver, (By.ID, "tcId"), 'Shell CPR, LLC.')
@@ -203,6 +226,8 @@ def assign_to_training_center(driver, quantity, product_code, training_site):
         click_element_by_js(driver, (By.ID, "btnValidate"))
         time.sleep(2)
         click_element_by_js(driver, (By.ID, "btnComplete"))
+        time.sleep(2)
+        click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']"))
     except Exception as e:
         print(f"Error assigning to training site: {e}")
         pass
