@@ -252,7 +252,8 @@ def get_training_site_name(code):
 
 def login_to_shop_cpr(driver):
     try:
-        driver.get("https://shopcpr.heart.org/")
+        driver.get("https://shopcpr.heart.org/"
+                   "")
         time.sleep(5)
         sign_in_btn = check_element_exists(driver, (By.XPATH, "//a[contains(@href, 'login')]"))
         if sign_in_btn:
