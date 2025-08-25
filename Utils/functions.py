@@ -36,8 +36,6 @@ def navigate_to_tc_product_orders(driver):
         pass
 
 def login_to_atlas(driver):
-    driver.get("https://atlas.heart.org/dashboard")
-    time.sleep(5)
     try:
         sign_in_button = check_element_exists(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]"))
         if sign_in_button:

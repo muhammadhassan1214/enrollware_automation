@@ -74,6 +74,8 @@ class OrderProcessor:
                 self.driver.switch_to.window(self.driver.window_handles[-1])
 
                 # Login to Atlas
+                self.driver.get("https://atlas.heart.org/dashboard")
+                time.sleep(5)
                 login_to_atlas(self.driver)
                 navigate_to_eCard_section(self.driver)
                 time.sleep(2)
