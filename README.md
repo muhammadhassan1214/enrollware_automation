@@ -28,7 +28,7 @@ Automates filtering and processing TC Product Orders in Enrollware, updating the
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/muhammadhassan1214/enrollware_order_automation.git
+   git clone https://github.com/muhammadhassan1214/enrollware_automation.git
    cd enrollware_order_automation
    ```
 
