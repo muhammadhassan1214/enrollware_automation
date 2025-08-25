@@ -38,31 +38,29 @@ def navigate_to_tc_product_orders(driver):
 def login_to_atlas(driver):
     try:
         sign_in_button = check_element_exists(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]"))
-        if sign_in_button:
+        email_field = check_element_exists(driver, (By.ID, "Email"))
+        if sign_in_button and email_field:
             click_element_by_js(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]"))
             print("Navigating to Atlas Sign In Page")
             time.sleep(2)
             if driver.current_url == "https://atlas.heart.org/dashboard":
                 print("Logged In to Atlas")
                 return
-            try:
-                email_entered = check_element_exists(driver, (By.XPATH, f'''//input[@value= '{os.getenv("ATLAS_USERNAME")}']'''))
-                if email_entered:
-                    input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
-                    time.sleep(2)
-                    click_element_by_js(driver, (By.ID, "btnSignIn"))
-                    print("Signed In Successfully.")
-                    return
-                else:
-                    input_element(driver, (By.ID, "Email"), os.getenv("ATLAS_USERNAME"))
-                    time.sleep(2)
-                    input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
-                    time.sleep(2)
-                    click_element_by_js(driver, (By.ID, "RememberMe"))
-                    time.sleep(2)
-                    click_element_by_js(driver, (By.ID, "btnSignIn"))
-            except:
-                pass
+            input_element(driver, (By.ID, "Email"), os.getenv("ATLAS_USERNAME"))
+            time.sleep(2)
+            input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
+            time.sleep(2)
+            click_element_by_js(driver, (By.ID, "RememberMe"))
+            time.sleep(2)
+            click_element_by_js(driver, (By.ID, "btnSignIn"))
+        if email_field and not sign_in_button:
+            input_element(driver, (By.ID, "Email"), os.getenv("ATLAS_USERNAME"))
+            time.sleep(2)
+            input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
+            time.sleep(2)
+            click_element_by_js(driver, (By.ID, "RememberMe"))
+            time.sleep(2)
+            click_element_by_js(driver, (By.ID, "btnSignIn"))
         else:
             print("Sign In button not found. Skipping login to Atlas.")
             pass
