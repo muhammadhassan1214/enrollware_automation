@@ -20,7 +20,7 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver):
             input_element(driver, (By.ID, "password"), os.getenv("ENROLLWARE_PASSWORD"))
             click_element_by_js(driver, (By.ID, "rememberMe"))
             click_element_by_js(driver, (By.ID, "loginButton"))
-            time.sleep(10)
+            time.sleep(20)
             print("Logged In Successfully.\nNavigating to TC Product Orders")
             navigate_to_tc_product_orders(driver)
     except:
@@ -248,3 +248,85 @@ def get_training_site_name(code):
     except Exception as e:
         print(f"Error reading CSV file: {e}")
         return None
+
+
+def login_to_shop_cpr(driver):
+    try:
+        driver.get("https://shopcpr.heart.org/")
+        time.sleep(5)
+        sign_in_btn = check_element_exists(driver, (By.XPATH, "//a[contains(@href, 'login')]"))
+        if sign_in_btn:
+            print("Logging in to ShopCPR.")
+            click_element_by_js(driver, (By.XPATH, "//a[contains(@href, 'login')]"))
+            time.sleep(2)
+            input_element(driver, (By.ID, "Email"), os.getenv("SHOP_CPR_USERNAME"))
+            time.sleep(2)
+            input_element(driver, (By.ID, "Password"), os.getenv("SHOP_CPR_PASSWORD"))
+            time.sleep(2)
+            click_element_by_js(driver, (By.ID, "btnSignIn"))
+            time.sleep(5)
+        else:
+            print("Already logged in to ShopCPR.")
+            pass
+    except Exception as e:
+        print(f"Error Logging in to ShopCPR. {e}")
+        pass
+
+def checkout_popup_handling(driver):
+    try:
+        popup = check_element_exists(driver, (By.XPATH, "//div[@id= 'org-form']"))
+        if popup:
+            click_element_by_js(driver, (By.XPATH, "//button[text()= 'Continue']"))
+            time.sleep(2)
+    except Exception as e:
+        print(f"Error handling checkout popup: {e}")
+        pass
+
+def make_purchase_on_shop_cpr(driver, product_code, quantity_to_order, name):
+    try:
+        driver.execute_script("window.open('');")
+        driver.switch_to.window(driver.window_handles[-1])
+        login_to_shop_cpr(driver)
+        click_element_by_js(driver, (By.XPATH, "//span[text()= 'Course Cards']/parent::a"))
+        time.sleep(1)
+        click_element_by_js(driver, (By.XPATH, "//span[text()= 'Heartsaver Bundles']/parent::a"))
+        time.sleep(2)
+        click_element_by_js(driver, (By.XPATH, "//button[@title= 'Search Product']"))
+        time.sleep(1)
+        input_element(driver, (By.XPATH, "//input[@id= 'searchtext']"), product_code)
+        time.sleep(1)
+        click_element_by_js(driver, (By.XPATH, "//button[@id= 'btnsearch']"))
+        time.sleep(2)
+        input_element(driver, (By.XPATH, "//input[@id= 'qty']"), quantity_to_order)
+        time.sleep(1)
+        click_element_by_js(driver, (By.XPATH, "//button[@id= 'product-addtocart-button']"))
+        time.sleep(2)
+        click_element_by_js(driver, (By.XPATH, "//a[@id= 'aha-showcart']"))
+        time.sleep(1)
+        click_element_by_js(driver, (By.ID, "top-cart-btn-checkout"))
+        time.sleep(2)
+        checkout_popup_handling(driver)
+        time.sleep(2)
+        input_element(driver, (By.XPATH, "//input[@id= 'sid']"), os.getenv("SHOP_CPR_SECURITY_ID"))
+        time.sleep(1)
+        click_element_by_js(driver, (By.ID, "proceed-checkout"))
+        time.sleep(2)
+        input_element(driver, (By.ID, "po_number"), name)
+        time.sleep(1)
+        click_element_by_js(driver, (By.XPATH, "//button[text()= 'Proceed to Payment']"))
+        time.sleep(2)
+        if "orderconfirmation" in driver.current_url:
+            print(f"Successfully purchased {quantity_to_order} of {product_code} eCards for {name}.")
+        else:
+            print(f"Failed to complete purchase for {product_code} eCards for {name}.")
+        time.sleep(1)
+        driver.close()
+        time.sleep(0.5)
+        driver.switch_to.window(driver.window_handles[-1])
+        time.sleep(0.5)
+        driver.refresh()
+    except Exception as e:
+        print(f"Error in making purchase on ShopCPR: {e}")
+        driver.close()
+        go_back(driver)
+        pass
