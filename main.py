@@ -79,13 +79,11 @@ class OrderProcessor:
                 login_to_atlas(self.driver)
                 navigate_to_eCard_section(self.driver)
                 time.sleep(2)
-
+                self.driver.switch_to.window(self.driver.window_handles[-1])
                 # Check if additional sign-in is needed
                 if "login" in self.driver.current_url.lower():
                     login_to_atlas(self.driver)
                     navigate_to_eCard_section(self.driver)
-
-                self.driver.switch_to.window(self.driver.window_handles[-1])
                 time.sleep(2)
                 return True
 
