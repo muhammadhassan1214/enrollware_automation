@@ -81,8 +81,7 @@ class OrderProcessor:
                 time.sleep(2)
 
                 # Check if additional sign-in is needed
-                sign_in_button = check_element_exists(self.driver, (By.ID, "Email"))
-                if sign_in_button:
+                if "login" in self.driver.current_url.lower():
                     login_to_atlas(self.driver)
                     navigate_to_eCard_section(self.driver)
 
