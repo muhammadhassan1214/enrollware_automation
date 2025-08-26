@@ -1,6 +1,6 @@
 from Utils.functions import *
 import logging
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -271,5 +271,24 @@ def main():
         processor.cleanup()
 
 
+SCHEDULE_INTERVAL_SECONDS = 30 * 60  # 30 minutes
+
+def run_every_30_minutes():
+    while True:
+        start = time.time()
+        logger.info("Scheduled run started.")
+        try:
+            main()  # Existing processing logic
+        except Exception as e:
+            logger.error(f"Unhandled error in scheduled run wrapper: {e}")
+        elapsed = time.time() - start
+        remaining = SCHEDULE_INTERVAL_SECONDS - elapsed
+        if remaining > 0:
+            logger.info(f"Run finished in {elapsed:.1f}s. Sleeping {remaining:.1f}s until next run.")
+            time.sleep(remaining)
+        else:
+            logger.info(f"Run took {elapsed:.1f}s (>= 30 minutes). Starting next run immediately.")
+
+
 if __name__ == "__main__":
-    main()
+    run_every_30_minutes()

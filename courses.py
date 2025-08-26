@@ -1,4 +1,3 @@
-# create a class of all available courses
 
 class AvailableCourses:
     def __init__(self):
