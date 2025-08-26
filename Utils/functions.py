@@ -56,8 +56,6 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
             validation_button = check_element_exists(driver, (By.ID, "loginButton"), timeout=5)
 
             if validation_button:
-                logger.info("Logging into Enrollware...")
-
                 # Input credentials with validation
                 if not input_element(driver, (By.ID, "username"), os.getenv("ENROLLWARE_USERNAME")):
                     logger.error("Failed to input username")
@@ -84,14 +82,11 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
                 else:
                     logger.warning("Login may have failed, checking current URL")
                     continue
-            else:
-                logger.info("Already logged into Enrollware")
 
             # Navigate to TC Product Orders
             return navigate_to_tc_product_orders(driver)
 
         except Exception as e:
-            logger.error(f"Login attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
@@ -127,7 +122,6 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
         try:
             # Check if already logged in
             if "dashboard" in driver.current_url and "atlas.heart.org" in driver.current_url:
-                logger.info("Already logged into Atlas")
                 return True
 
             # Check for sign-in button
@@ -135,7 +129,6 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
             email_field = check_element_exists(driver, (By.ID, "Email"), timeout=5)
 
             if sign_in_button and email_field:
-                logger.info("Clicking sign-in button for Atlas")
                 if not click_element_by_js(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]")):
                     continue
 
@@ -143,21 +136,16 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
 
                 # Check if redirected to dashboard
                 if "dashboard" in driver.current_url:
-                    logger.info("Already logged into Atlas after clicking sign-in")
                     return True
 
             # Proceed with login if email field exists
             if check_element_exists(driver, (By.ID, "Email"), timeout=5):
-                logger.info("Entering Atlas credentials")
-
                 if not input_element(driver, (By.ID, "Email"), os.getenv("ATLAS_USERNAME")):
-                    logger.error("Failed to input Atlas email")
                     continue
 
                 time.sleep(2)
 
                 if not input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD")):
-                    logger.error("Failed to input Atlas password")
                     continue
 
                 time.sleep(2)
@@ -171,29 +159,24 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
 
                 # Click sign-in button
                 if not click_element_by_js(driver, (By.ID, "btnSignIn")):
-                    logger.error("Failed to click Atlas sign-in button")
                     continue
 
                 time.sleep(5)
 
                 # Verify login success
                 if "dashboard" in driver.current_url or "atlas.heart.org" in driver.current_url:
-                    logger.info("Successfully logged into Atlas")
                     return True
                 else:
-                    logger.warning("Atlas login verification failed")
                     continue
             else:
-                logger.warning("Atlas email field not found, may already be logged in")
                 return True
 
         except Exception as e:
-            logger.error(f"Atlas login attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
 
-    logger.error("Failed to login to Atlas after all attempts")
+    logger.error("Failed to login to Atlas")
     return False
 
 
@@ -237,7 +220,6 @@ def get_indexes_to_process(driver) -> List[int]:
 
         # Find all rows inside the table
         rows = driver.find_elements(By.XPATH, "//tbody/tr")
-        logger.info(f"Found {len(rows)} rows to evaluate")
 
         for i, row in enumerate(rows, start=1):  # start=1 for 1-based index
             try:
@@ -250,22 +232,17 @@ def get_indexes_to_process(driver) -> List[int]:
 
                 # Exclusion conditions
                 if "redcross" in td2 or "red cross" in td2:
-                    logger.info(f"Skipping row {i}: Red Cross course detected")
                     continue
 
                 if "complete" in td4:
-                    logger.info(f"Skipping row {i}: Already marked as complete")
                     continue
 
                 # If not excluded, keep index
                 valid_indexes.append(i)
-                logger.debug(f"Added row {i} to processing queue")
 
             except Exception as e:
-                logger.error(f"Error evaluating row {i}: {e}")
                 continue
 
-        logger.info(f"Found {len(valid_indexes)} valid rows to process: {valid_indexes}")
         return valid_indexes
 
     except Exception as e:
@@ -290,16 +267,10 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
         training_site_xpath = create_xpath('Training Site')
         training_site = get_element_text(driver, (By.XPATH, training_site_xpath), default="Unknown").strip()
 
-        if not training_site or training_site == "Unknown":
-            logger.warning("Training site not found or empty")
-
         # Get name/address
         name_xpath = create_xpath('Name/Address')
         name = get_element_text(driver, (By.XPATH, name_xpath), default="Unknown")
         name = name.split('\n')[0].strip() if "\n" in name else name.strip()
-
-        if not name or name == "Unknown":
-            logger.warning("Name/Address not found or empty")
 
         # Get number of orders
         products_xpath = f"{create_xpath('Products')}//tr"
@@ -307,10 +278,7 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
         num_of_orders = max(0, len(product_rows) - 1)  # Subtract header row
 
         if num_of_orders == 0:
-            logger.warning("No product orders found")
             return [], 0
-
-        logger.info(f"Found {num_of_orders} orders to process")
 
         # Get order details
         quantity_elements = driver.find_elements(By.XPATH, f"{create_xpath('Products')}//td[1]")
@@ -320,7 +288,6 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
         # Validate element counts
         min_count = min(len(quantity_elements), len(product_code_elements), len(course_name_elements))
         if min_count < num_of_orders:
-            logger.warning(f"Element count mismatch. Expected: {num_of_orders}, Got: {min_count}")
             num_of_orders = min_count
 
         # Extract order data
@@ -332,7 +299,6 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
 
                 # Validate required fields
                 if not all([quantity, product_code, course_name]):
-                    logger.warning(f"Incomplete order data at index {i}: qty={quantity}, code={product_code}, name={course_name}")
                     continue
 
                 order_data.append({
@@ -343,13 +309,9 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
                     "course_name": course_name
                 })
 
-                logger.debug(f"Order {i+1}: {product_code} - {quantity} units")
-
             except Exception as e:
-                logger.error(f"Error extracting order data at index {i}: {e}")
                 continue
 
-        logger.info(f"Successfully extracted {len(order_data)} orders")
         return order_data, len(order_data)
 
     except Exception as e:
@@ -509,21 +471,18 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             # Click on the course
             available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
             if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
-                logger.error("Failed to click course selector")
                 continue
 
             time.sleep(2)
 
             # Click 'Assign to Instructor'
             if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Instructor')]")):
-                logger.error("Failed to click 'Assign to Instructor'")
                 continue
 
             time.sleep(2)
 
             # Select TC Admin role
             if not select_by_text(driver, (By.ID, "RoleId"), 'TC Admin'):
-                logger.error("Failed to select TC Admin role")
                 continue
 
             time.sleep(2)
@@ -531,25 +490,21 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
             if not course_name_on_ecard:
-                logger.error(f"Course name not found for product code: {product_code}")
                 continue
 
             if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
-                logger.error("Failed to select course")
                 continue
 
             time.sleep(2)
 
             # Select training center
             if not select_by_text(driver, (By.ID, "ddlTC"), 'Shell CPR, LLC.'):
-                logger.error("Failed to select training center")
                 continue
 
             time.sleep(2)
 
             # Click assign to dropdown
             if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
-                logger.error("Failed to click assign to dropdown")
                 continue
 
             time.sleep(2)
@@ -557,54 +512,46 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             # Select instructor by name
             instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
             if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
-                logger.error(f"Failed to select instructor: {name}")
                 continue
 
             time.sleep(2)
 
             # Click move next
             if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
-                logger.error("Failed to click move next")
                 continue
 
             time.sleep(2)
 
             # Input quantity
             if not input_element(driver, (By.ID, "qty1"), str(quantity)):
-                logger.error("Failed to input quantity")
                 continue
 
             time.sleep(1)
 
             # Click confirm
             if not click_element_by_js(driver, (By.ID, "btnConfirm")):
-                logger.error("Failed to click confirm")
                 continue
 
             time.sleep(2)
 
             # Click complete
             if not click_element_by_js(driver, (By.ID, "btnComplete")):
-                logger.error("Failed to click complete")
                 continue
 
             time.sleep(2)
 
             # Go to inventory
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
-                logger.error("Failed to click 'Go To Inventory'")
                 continue
 
-            logger.info(f"Successfully assigned {quantity} of {product_code} to instructor {name}")
             return True
 
         except Exception as e:
-            logger.error(f"Assign to instructor attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
 
-    logger.error("Failed to assign to instructor after all attempts")
+    logger.error("Failed to assign to instructor")
     return False
 
 
@@ -619,28 +566,24 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             # Click on the course
             available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
             if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
-                logger.error("Failed to click course selector")
                 continue
 
             time.sleep(2)
 
             # Click 'Assign to Training Site'
             if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Training Site')]")):
-                logger.error("Failed to click 'Assign to Training Site'")
                 continue
 
             time.sleep(2)
 
             # Select training center
             if not select_by_text(driver, (By.ID, "tcId"), 'Shell CPR, LLC.'):
-                logger.error("Failed to select training center")
                 continue
 
             time.sleep(2)
 
             # Select training site
             if not select_by_text(driver, (By.ID, "tsList"), training_site):
-                logger.error(f"Failed to select training site: {training_site}")
                 continue
 
             time.sleep(2)
@@ -648,44 +591,37 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
             if not course_name_on_ecard:
-                logger.error(f"Course name not found for product code: {product_code}")
                 continue
 
             if not select_by_text(driver, (By.ID, "courseId"), course_name_on_ecard):
-                logger.error("Failed to select course")
                 continue
 
             time.sleep(2)
 
             # Input quantity
             if not input_element(driver, (By.ID, "qty"), str(quantity)):
-                logger.error("Failed to input quantity")
                 continue
 
             # Click validate
             if not click_element_by_js(driver, (By.ID, "btnValidate")):
-                logger.error("Failed to click validate")
                 continue
 
             time.sleep(2)
 
             # Click complete
             if not click_element_by_js(driver, (By.ID, "btnComplete")):
-                logger.error("Failed to click complete")
                 continue
 
             time.sleep(2)
 
             # Go to inventory
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
-                logger.error("Failed to click 'Go To Inventory'")
                 continue
 
             logger.info(f"Successfully assigned {quantity} of {product_code} to training site {training_site}")
             return True
 
         except Exception as e:
-            logger.error(f"Assign to training center attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
@@ -965,4 +901,3 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
 
     logger.error(f"Failed to complete purchase for {product_code} after all attempts")
     return False
-

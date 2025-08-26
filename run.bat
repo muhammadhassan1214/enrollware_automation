@@ -65,84 +65,26 @@ echo ==========================================
 
 :: Initialize log file with header
 echo [%date% %time%] Starting Enrollware Automation > "%logfile%"
-echo [%date% %time%] Log file: %logfile% >> "%logfile%"
 echo [%date% %time%] Current directory: %CD% >> "%logfile%"
-echo [%date% %time%] Python version: >> "%logfile%"
-python --version >> "%logfile%" 2>&1
-echo. >> "%logfile%"
-echo [%date% %time%] ==========================================  >> "%logfile%"
-echo [%date% %time%] APPLICATION OUTPUT: >> "%logfile%"
-echo [%date% %time%] ==========================================  >> "%logfile%"
+echo [%date% %time%] ========================================== >> "%logfile%"
 
-:: Run Python script with proper output capture and real-time display
+:: Run Python script with simple logging that shows output in terminal
 echo Running: python main.py
 echo.
 
-:: Use PowerShell to handle real-time output and logging
-powershell -Command "& {
-    $process = Start-Process -FilePath 'python' -ArgumentList 'main.py' -NoNewWindow -PassThru -RedirectStandardOutput 'temp_stdout.txt' -RedirectStandardError 'temp_stderr.txt'
-
-    # Monitor output files and display/log in real-time
-    $stdout_pos = 0
-    $stderr_pos = 0
-
-    while (-not $process.HasExited) {
-        # Check stdout
-        if (Test-Path 'temp_stdout.txt') {
-            $content = Get-Content 'temp_stdout.txt' -Raw
-            if ($content.Length -gt $stdout_pos) {
-                $new_content = $content.Substring($stdout_pos)
-                Write-Host $new_content -NoNewline
-                Add-Content '%logfile%' \"[$(Get-Date)] STDOUT: $new_content\"
-                $stdout_pos = $content.Length
-            }
-        }
-
-        # Check stderr
-        if (Test-Path 'temp_stderr.txt') {
-            $content = Get-Content 'temp_stderr.txt' -Raw
-            if ($content.Length -gt $stderr_pos) {
-                $new_content = $content.Substring($stderr_pos)
-                Write-Host $new_content -NoNewline -ForegroundColor Red
-                Add-Content '%logfile%' \"[$(Get-Date)] STDERR: $new_content\"
-                $stderr_pos = $content.Length
-            }
-        }
-
-        Start-Sleep -Milliseconds 100
-    }
-
-    # Get final output
-    if (Test-Path 'temp_stdout.txt') {
-        $content = Get-Content 'temp_stdout.txt' -Raw
-        if ($content.Length -gt $stdout_pos) {
-            $new_content = $content.Substring($stdout_pos)
-            Write-Host $new_content -NoNewline
-            Add-Content '%logfile%' \"[$(Get-Date)] STDOUT: $new_content\"
-        }
-    }
-
-    if (Test-Path 'temp_stderr.txt') {
-        $content = Get-Content 'temp_stderr.txt' -Raw
-        if ($content.Length -gt $stderr_pos) {
-            $new_content = $content.Substring($stderr_pos)
-            Write-Host $new_content -NoNewline -ForegroundColor Red
-            Add-Content '%logfile%' \"[$(Get-Date)] STDERR: $new_content\"
-        }
-    }
-
-    exit $process.ExitCode
-}"
+:: Simple approach: run python and capture output to both console and log
+python main.py 2>&1 | (
+    for /f "delims=" %%i in ('more') do (
+        echo %%i
+        echo [%date% %time%] %%i >> "%logfile%"
+    )
+)
 
 set SCRIPT_EXIT_CODE=%errorlevel%
 
-:: Clean up temporary files
-if exist "temp_stdout.txt" del "temp_stdout.txt" >nul 2>&1
-if exist "temp_stderr.txt" del "temp_stderr.txt" >nul 2>&1
-
 :: Add completion status to log
 echo. >> "%logfile%"
-echo [%date% %time%] ==========================================  >> "%logfile%"
+echo [%date% %time%] ========================================== >> "%logfile%"
 
 echo.
 echo ==========================================
@@ -159,15 +101,6 @@ echo ==========================================
 echo.
 echo Log file saved: %logfile%
 echo.
-
-:: Show log file size and last modification
-if exist "%logfile%" (
-    for %%F in ("%logfile%") do (
-        echo Log file size: %%~zF bytes
-        echo Last modified: %%~tF
-    )
-    echo.
-)
 
 set /p view_log="View log file? (y/N): "
 if /i "!view_log!" equ "y" (
