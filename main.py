@@ -100,7 +100,7 @@ class OrderProcessor:
                                available_qyt_selector: str) -> bool:
         """Process order assignment with proper exception handling."""
         try:
-            assignment_site = "Assign to Instructor" if "615-230-7991" in training_site else "Assign to Training Site"
+            assignment_site = "Assign to Training Site" if training_site.startswith("TS") else "Assign to Instructor"
 
             if assignment_site == "Assign to Instructor":
                 return self.process_instructor_assignment(order_data, available_qyt_selector)

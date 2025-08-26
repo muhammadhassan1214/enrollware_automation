@@ -215,11 +215,6 @@ def navigate_to_eCard_section(driver, max_retries: int = 3) -> bool:
 
             time.sleep(3)
 
-            # Verify navigation success
-            if "ecard" in driver.current_url.lower() or check_element_exists(driver, (By.XPATH, "//h1[contains(text(), 'eCard')]"), timeout=5):
-                logger.info("Successfully navigated to eCard section")
-                return True
-
         except Exception as e:
             logger.error(f"eCard navigation attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
