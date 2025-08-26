@@ -1,11 +1,80 @@
 from Utils.functions import *
 import logging
 from typing import List, Dict, Any
+import sys
+import os
+from datetime import datetime
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging with both console and file handlers
+def setup_logging():
+    """Setup comprehensive logging with both console and file output."""
+    # Create logs directory if it doesn't exist
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+
+    # Create timestamp for log file
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_file = f'logs/python_{timestamp}.log'
+
+    # Create formatters
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    )
+    simple_formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s'
+    )
+
+    # Get root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Remove any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(simple_formatter)
+    root_logger.addHandler(console_handler)
+
+    # File handler
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(detailed_formatter)
+    root_logger.addHandler(file_handler)
+
+    # Also redirect stdout and stderr to logging
+    class LoggingWriter:
+        def __init__(self, level):
+            self.level = level
+
+        def write(self, message):
+            if message.strip():
+                self.level(message.strip())
+
+        def flush(self):
+            pass
+
+    # Redirect stdout and stderr
+    sys.stdout = LoggingWriter(logging.getLogger('STDOUT').info)
+    sys.stderr = LoggingWriter(logging.getLogger('STDERR').error)
+
+    return log_file
+
+# Setup logging
+log_file = setup_logging()
 logger = logging.getLogger(__name__)
 
+# Log startup information
+logger.info("="*60)
+logger.info("ENROLLWARE AUTOMATION STARTING")
+logger.info("="*60)
+logger.info(f"Python log file: {log_file}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Script path: {os.path.abspath(__file__)}")
+logger.info("="*60)
 
 class OrderProcessor:
     def __init__(self):
@@ -15,11 +84,19 @@ class OrderProcessor:
     def initialize(self) -> bool:
         """Initialize the order processor with safe exception handling."""
         try:
+            logger.info("Initializing OrderProcessor...")
             self.available_courses = AvailableCourses()
+            logger.info("AvailableCourses initialized successfully")
+
             self.driver = get_undetected_driver()
-            return True
+            if self.driver:
+                logger.info("Chrome driver initialized successfully")
+                return True
+            else:
+                logger.error("Failed to initialize Chrome driver")
+                return False
         except Exception as e:
-            logger.error(f"Failed to initialize: {e}")
+            logger.error(f"Failed to initialize: {e}", exc_info=True)
             return False
 
     def cleanup(self):
@@ -170,6 +247,7 @@ class OrderProcessor:
     def process_single_row(self, index: int) -> bool:
         """Process a single row with comprehensive exception handling."""
         try:
+            logger.info(f"Processing row {index}...")
             time.sleep(2)
             click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
 
@@ -186,14 +264,17 @@ class OrderProcessor:
             name = first_order.get('name', '')
             training_site = first_order.get('training_site', '')
 
+            logger.info(f"Row {index} details - Name: {name}, Product: {product_code}, Course: {course_name}")
+
             # Check if course should be skipped
             should_skip, skip_reason = self.should_skip_course(course_name, product_code)
             if should_skip:
-                logger.info(f"Skipping: {skip_reason}")
+                logger.info(f"Skipping row {index}: {skip_reason}")
                 self.safe_click_back_button()
                 return True  # Not an error, just skipped
 
             # Setup Atlas session
+            logger.info(f"Setting up Atlas session for row {index}...")
             if not self.setup_atlas_session():
                 logger.error(f"Failed to setup Atlas session for row {index}")
                 self.safe_click_back_button()
@@ -205,10 +286,12 @@ class OrderProcessor:
 
             available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
             if not available_course:
+                logger.warning(f"Course {product_code} not available for eCard generation")
                 course_not_available(self.driver, product_code)
                 return False
 
             # Process order assignment
+            logger.info(f"Processing order assignment for row {index}...")
             if not self.process_order_assignment(order_data, training_site, available_qyt_selector):
                 logger.error(f"Failed to process order assignment for row {index}")
                 self.safe_navigate_back()
@@ -216,6 +299,7 @@ class OrderProcessor:
                 return False
 
             # Complete the order
+            logger.info(f"Completing order for row {index}...")
             self.safe_navigate_back()
             mark_order_as_complete(self.driver)
 
@@ -223,7 +307,7 @@ class OrderProcessor:
             return True
 
         except Exception as e:
-            logger.error(f"Error processing row {index}: {e}")
+            logger.error(f"Error processing row {index}: {e}", exc_info=True)
             # Attempt recovery
             try:
                 self.safe_navigate_back()
@@ -234,6 +318,7 @@ class OrderProcessor:
 
 
 def main():
+    logger.info("Starting main automation process...")
     processor = OrderProcessor()
 
     if not processor.initialize():
@@ -242,53 +327,79 @@ def main():
 
     try:
         # Login and navigate
-        login_to_enrollware_and_navigate_to_tc_product_orders(processor.driver)
+        logger.info("Logging into Enrollware and navigating to TC Product Orders...")
+        if not login_to_enrollware_and_navigate_to_tc_product_orders(processor.driver):
+            logger.error("Failed to login or navigate to TC Product Orders")
+            return
+
+        logger.info("Getting rows to process...")
         rows_to_process = get_indexes_to_process(processor.driver)
 
         if not rows_to_process:
             logger.info("No rows to process")
             return
 
+        logger.info(f"Found {len(rows_to_process)} rows to process: {rows_to_process}")
         successful_rows = 0
         failed_rows = 0
 
         for index in rows_to_process:
             try:
+                logger.info(f"Starting processing of row {index} ({successful_rows + failed_rows + 1}/{len(rows_to_process)})")
                 if processor.process_single_row(index):
                     successful_rows += 1
+                    logger.info(f"Row {index} completed successfully. Progress: {successful_rows + failed_rows}/{len(rows_to_process)}")
                 else:
                     failed_rows += 1
+                    logger.error(f"Row {index} failed. Progress: {successful_rows + failed_rows}/{len(rows_to_process)}")
             except Exception as e:
-                logger.error(f"Unexpected error processing row {index}: {e}")
+                logger.error(f"Unexpected error processing row {index}: {e}", exc_info=True)
                 failed_rows += 1
                 continue
 
         logger.info(f"Processing complete. Successful: {successful_rows}, Failed: {failed_rows}")
 
     except Exception as e:
-        logger.error(f"Critical error in main process: {e}")
+        logger.error(f"Critical error in main process: {e}", exc_info=True)
     finally:
+        logger.info("Cleaning up resources...")
         processor.cleanup()
 
 
 SCHEDULE_INTERVAL_SECONDS = 30 * 60  # 30 minutes
 
 def run_every_30_minutes():
+    logger.info("Starting scheduled automation (runs every 30 minutes)")
+    run_count = 0
+
     while True:
+        run_count += 1
         start = time.time()
-        logger.info("Scheduled run started.")
+        logger.info(f"Scheduled run #{run_count} started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
         try:
             main()  # Existing processing logic
         except Exception as e:
-            logger.error(f"Unhandled error in scheduled run wrapper: {e}")
+            logger.error(f"Unhandled error in scheduled run #{run_count}: {e}", exc_info=True)
+
         elapsed = time.time() - start
         remaining = SCHEDULE_INTERVAL_SECONDS - elapsed
+
         if remaining > 0:
-            logger.info(f"Run finished in {elapsed:.1f}s. Sleeping {remaining:.1f}s until next run.")
+            logger.info(f"Run #{run_count} finished in {elapsed:.1f}s. Sleeping {remaining:.1f}s until next run.")
+            logger.info(f"Next run scheduled for: {datetime.fromtimestamp(time.time() + remaining).strftime('%Y-%m-%d %H:%M:%S')}")
             time.sleep(remaining)
         else:
-            logger.info(f"Run took {elapsed:.1f}s (>= 30 minutes). Starting next run immediately.")
+            logger.info(f"Run #{run_count} took {elapsed:.1f}s (>= 30 minutes). Starting next run immediately.")
 
 
 if __name__ == "__main__":
-    run_every_30_minutes()
+    try:
+        run_every_30_minutes()
+    except KeyboardInterrupt:
+        logger.info("Application interrupted by user (Ctrl+C)")
+    except Exception as e:
+        logger.error(f"Fatal error in main application: {e}", exc_info=True)
+    finally:
+        logger.info("Application shutting down...")
+        logger.info("="*60)
