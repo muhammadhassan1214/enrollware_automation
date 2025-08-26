@@ -12,7 +12,7 @@ echo ==========================================
 echo.
 
 :: Check if Python is installed
-echo [1/6] Checking Python installation...
+echo [1/7] Checking Python installation...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Python is not installed or not in PATH
@@ -27,7 +27,7 @@ echo [OK] Python %PYTHON_VERSION% found
 
 :: Check if pip is available
 echo.
-echo [2/6] Checking pip installation...
+echo [2/7] Checking pip installation...
 python -m pip --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] pip is not available
@@ -39,7 +39,7 @@ echo [OK] pip is available
 
 :: Check if virtual environment exists
 echo.
-echo [3/6] Checking virtual environment...
+echo [3/7] Checking virtual environment...
 if not exist "venv\" (
     echo [INFO] Virtual environment not found. Creating one...
     python -m venv venv
@@ -55,7 +55,7 @@ if not exist "venv\" (
 
 :: Activate virtual environment
 echo.
-echo [4/6] Activating virtual environment...
+echo [4/7] Activating virtual environment...
 call venv\Scripts\activate.bat
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to activate virtual environment
@@ -66,7 +66,7 @@ echo [OK] Virtual environment activated
 
 :: Check and install requirements
 echo.
-echo [5/6] Checking dependencies...
+echo [5/7] Checking dependencies...
 if exist "requirements.txt" (
     echo [INFO] Installing/updating dependencies from requirements.txt...
     python -m pip install --upgrade pip
@@ -90,7 +90,7 @@ if exist "requirements.txt" (
 
 :: Check if .env file exists
 echo.
-echo [6/6] Checking environment configuration...
+echo [6/7] Checking environment configuration...
 if not exist ".env" (
     echo [WARNING] .env file not found
     echo Please create a .env file with the following variables:
@@ -113,17 +113,29 @@ if not exist ".env" (
 )
 
 :: Check if main.py exists
+echo.
+echo [7/7] Checking main application file...
 if not exist "main.py" (
     echo [ERROR] main.py not found in current directory
+    echo Current directory: %CD%
+    dir *.py
     pause
     exit /b 1
 )
+echo [OK] main.py found
 
 :: Create logs directory if it doesn't exist
 if not exist "logs\" (
     mkdir logs
     echo [INFO] Created logs directory
 )
+
+:: Set log file with timestamp
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
+set "YY=%dt:~2,2%" & set "YYYY=%dt:~0,4%" & set "MM=%dt:~4,2%" & set "DD=%dt:~6,2%"
+set "HH=%dt:~8,2%" & set "Min=%dt:~10,2%" & set "Sec=%dt:~12,2%"
+set "timestamp=%YYYY%-%MM%-%DD%_%HH%-%Min%-%Sec%"
+set "logfile=logs\run_%timestamp%.log"
 
 :: Run the application
 echo.
@@ -132,37 +144,66 @@ echo    STARTING ENROLLWARE AUTOMATION
 echo ==========================================
 echo.
 echo [INFO] Starting application...
-echo [INFO] Logs will be saved in the logs directory
+echo [INFO] Log file: %logfile%
 echo [INFO] Press Ctrl+C to stop the application
+echo [INFO] Application output will be displayed below:
 echo.
+echo ==========================================
 
-:: Set log file with timestamp
-for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
-set "YY=%dt:~2,2%" & set "YYYY=%dt:~0,4%" & set "MM=%dt:~4,2%" & set "DD=%dt:~6,2%"
-set "HH=%dt:~8,2%" & set "Min=%dt:~10,2%" & set "Sec=%dt:~12,2%"
-set "timestamp=%YYYY%-%MM%-%DD%_%HH%-%Min%-%Sec%"
+:: Run main.py and capture both stdout and stderr to log file while displaying on screen
+echo [%date% %time%] Starting Enrollware Automation >> "%logfile%"
+echo. >> "%logfile%"
 
-:: Run main.py with logging
-python main.py 2>&1 | tee logs\run_%timestamp%.log
+:: Use a more compatible approach for logging
+(
+    echo Running: python main.py
+    python main.py
+) 2>&1 | (
+    for /f "delims=" %%i in ('more') do (
+        echo %%i
+        echo [%date% %time%] %%i >> "%logfile%"
+    )
+)
+
 set SCRIPT_EXIT_CODE=%errorlevel%
 
 echo.
 echo ==========================================
 if %SCRIPT_EXIT_CODE% equ 0 (
     echo [SUCCESS] Application completed successfully
+    echo [%date% %time%] Application completed successfully >> "%logfile%"
     color 0A
 ) else (
     echo [ERROR] Application exited with error code: %SCRIPT_EXIT_CODE%
+    echo [%date% %time%] Application exited with error code: %SCRIPT_EXIT_CODE% >> "%logfile%"
     color 0C
 )
 echo ==========================================
 echo.
-echo Log file: logs\run_%timestamp%.log
+echo Log file saved: %logfile%
 echo.
+
+:: Show last few lines of log for quick reference
+echo Last 10 lines of log:
+echo ==========================================
+if exist "%logfile%" (
+    powershell "Get-Content '%logfile%' | Select-Object -Last 10"
+) else (
+    echo Log file not found
+)
+echo ==========================================
+echo.
+
+set /p view_log="View full log file? (y/N): "
+if /i "!view_log!" equ "y" (
+    if exist "%logfile%" (
+        start notepad "%logfile%"
+    )
+)
+
 pause
 
 :: Deactivate virtual environment
-deactivate
+call deactivate >nul 2>&1
 
 exit /b %SCRIPT_EXIT_CODE%
-
