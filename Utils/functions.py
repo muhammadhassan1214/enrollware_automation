@@ -50,7 +50,7 @@ def login_to_atlas(driver):
             time.sleep(2)
             input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
             time.sleep(2)
-            click_element_by_js(driver, (By.ID, "RememberMe"))
+            click_element_by_js(driver, (By.ID, "//input[@id= 'RememberMe']/following-sibling::label"))
             time.sleep(2)
             click_element_by_js(driver, (By.ID, "btnSignIn"))
         if email_field and not sign_in_button:
@@ -58,7 +58,7 @@ def login_to_atlas(driver):
             time.sleep(2)
             input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD"))
             time.sleep(2)
-            click_element_by_js(driver, (By.ID, "RememberMe"))
+            click_element_by_js(driver, (By.XPATH, "//input[@id= 'RememberMe']/following-sibling::label"))
             time.sleep(2)
             click_element_by_js(driver, (By.ID, "btnSignIn"))
         else:
