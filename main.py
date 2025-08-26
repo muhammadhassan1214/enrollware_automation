@@ -121,34 +121,49 @@ class OrderProcessor:
             return True, f"Error checking course: {e}"
 
     def setup_atlas_session(self) -> bool:
-        """Setup Atlas session in new tab with retry logic."""
+        """Setup Atlas session in new tab with retry logic (avoids duplicate eCard tabs)."""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                # Open new tab
                 self.driver.execute_script("window.open('');")
                 self.driver.switch_to.window(self.driver.window_handles[-1])
 
-                # Login to Atlas
                 self.driver.get("https://atlas.heart.org/dashboard")
                 time.sleep(5)
+
                 login_to_atlas(self.driver)
-                navigate_to_eCard_section(self.driver)
-                time.sleep(2)
-                self.driver.switch_to.window(self.driver.window_handles[-1])
-                # Check if additional sign-in is needed
+
+                if not navigate_to_eCard_section(self.driver):
+                    logger.warning("eCard navigation failed; retrying")
+                    # Close this tab before retry
+                    self.driver.close()
+                    self.driver.switch_to.window(self.driver.window_handles[0])
+                    continue
+
+                # If redirected to login after click, try once more
                 if "login" in self.driver.current_url.lower():
                     login_to_atlas(self.driver)
-                    navigate_to_eCard_section(self.driver)
-                time.sleep(2)
+                    if not navigate_to_eCard_section(self.driver):
+                        logger.error("Second navigation to eCard failed after login")
+                        self.driver.close()
+                        self.driver.switch_to.window(self.driver.window_handles[0])
+                        continue
+
                 return True
 
             except Exception as e:
+                logger.error(f"Atlas session setup attempt {attempt + 1} failed: {e}")
+                # Cleanup tab if partially opened
+                try:
+                    if len(self.driver.window_handles) > 1:
+                        self.driver.close()
+                        self.driver.switch_to.window(self.driver.window_handles[0])
+                except Exception:
+                    pass
                 if attempt < max_attempts - 1:
                     time.sleep(2)
-                else:
-                    logger.error("Failed to setup Atlas session")
-                    return False
+
+        logger.error("Failed to setup Atlas session")
         return False
 
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
@@ -259,8 +274,9 @@ class OrderProcessor:
                 return False
 
             # Check course availability
-            available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
-            available_qyt_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[1]"
+            common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
+            available_course_selector = f"{common_selector}[@role='button']"
+            available_qyt_selector = f"{common_selector}[1]"
 
             available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
             if not available_course:

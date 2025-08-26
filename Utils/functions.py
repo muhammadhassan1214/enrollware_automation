@@ -180,29 +180,61 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def navigate_to_eCard_section(driver, max_retries: int = 3) -> bool:
-    """Navigate to eCard section with error handling."""
+def navigate_to_eCard_section(driver, max_retries: int = 3, switch_timeout: float = 5.0) -> bool:
+    """Navigate to eCard section, handling new tab opening and switching focus."""
     for attempt in range(max_retries):
         try:
-            # First hover over Training Center
+            # Hover over Training Center
             if not move_to_element(driver, (By.XPATH, "//button[@id= 'Training Center']")):
                 logger.error("Failed to hover over Training Center button")
                 continue
+            time.sleep(0.5)
 
-            time.sleep(1)
+            existing_handles = driver.window_handles[:]
 
-            # Then click on eCards
+            # Click eCards link (opens a new tab)
             if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'eCards']")):
                 logger.error("Failed to click eCards link")
                 continue
 
-            time.sleep(3)
+            # Wait for a new window handle (if target=_blank)
+            new_handle = None
+            end_time = time.time() + switch_timeout
+            while time.time() < end_time:
+                current_handles = driver.window_handles
+                if len(current_handles) > len(existing_handles):
+                    diff = list(set(current_handles) - set(existing_handles))
+                    if diff:
+                        new_handle = diff[0]
+                        break
+                time.sleep(0.2)
+
+            if new_handle:
+                driver.switch_to.window(new_handle)
+                logger.info("Switched to new eCards tab")
+            else:
+                logger.debug("No new tab detected; assuming same-tab navigation")
+
+            # Verify navigation (URL or page content)
+            for _ in range(20):  # up to ~10s
+                url_ok = "Inventory" in driver.current_url.lower()
+                marker = check_element_exists(
+                    driver,
+                    (By.XPATH, "//span[text()= 'eCard Inventory']"),
+                    timeout=1
+                )
+                if url_ok or marker:
+                    logger.info("Successfully navigated to eCard section")
+                    return True
+                time.sleep(0.5)
+
+            logger.warning("eCard page verification not found; assuming success after click")
+            return True
 
         except Exception as e:
             logger.error(f"eCard navigation attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
-                continue
 
     logger.error("Failed to navigate to eCard section")
     return False
