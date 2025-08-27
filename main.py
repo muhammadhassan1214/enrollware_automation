@@ -124,8 +124,8 @@ class OrderProcessor:
             logger.error(f"Error checking course availability: {e}")
             return True, f"Error checking course: {e}"
 
-    def setup_atlas_session(self) -> bool:
-        """Setup Atlas session in new tab with retry logic (avoids duplicate eCard tabs)."""
+    def setup_eCards_session(self) -> bool:
+        """Setup eCards session in new tab with retry logic (avoids duplicate eCard tabs)."""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
@@ -133,37 +133,25 @@ class OrderProcessor:
                 self.driver.switch_to.window(self.driver.window_handles[-1])
 
                 self.driver.get("https://ecards.heart.org/inventory")
-                time.sleep(5)
+                time.sleep(3)
 
                 maintenance_msg = check_element_exists(self.driver, (By.XPATH, "//span[contains(text(), 'Our site will be under maintenance')]"))
                 if maintenance_msg:
-                    logger.error("Atlas site is under maintenance")
+                    logger.error("eCards site is under maintenance")
                     self.driver.close()
                     self.driver.switch_to.window(self.driver.window_handles[0])
                     return False
 
                 login_to_ecards(self.driver)
 
-                if not navigate_to_eCard_section(self.driver):
-                    logger.warning("eCard navigation failed; retrying")
-                    # Close this tab before retry
-                    self.driver.close()
-                    self.driver.switch_to.window(self.driver.window_handles[0])
-                    continue
-
-                # If redirected to login after click, try once more
+                # If redirected to log in after click, try once more
                 if "login" in self.driver.current_url.lower():
                     login_to_ecards(self.driver)
-                    if not navigate_to_eCard_section(self.driver):
-                        logger.error("Second navigation to eCard failed after login")
-                        self.driver.close()
-                        self.driver.switch_to.window(self.driver.window_handles[0])
-                        continue
 
                 return True
 
             except Exception as e:
-                logger.error(f"Atlas session setup attempt {attempt + 1} failed: {e}")
+                logger.error(f"eCards session setup attempt {attempt + 1} failed: {e}")
                 # Cleanup tab if partially opened
                 try:
                     if len(self.driver.window_handles) > 1:
@@ -174,7 +162,7 @@ class OrderProcessor:
                 if attempt < max_attempts - 1:
                     time.sleep(2)
 
-        logger.error("Failed to setup Atlas session")
+        logger.error("Failed to setup eCards session")
         return False
 
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
@@ -293,7 +281,7 @@ class OrderProcessor:
                 return True  # Not an error, just skipped
 
             # Setup Atlas session
-            if not self.setup_atlas_session():
+            if not self.setup_eCards_session():
                 logger.error(f"Failed to setup Atlas session for row {index}")
                 self.safe_click_back_button()
                 return False

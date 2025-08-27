@@ -3,3 +3,4 @@ Utils/chrome-dir
 .idea
 __pycache__
 .env
+logs
