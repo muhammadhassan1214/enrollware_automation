@@ -115,6 +115,10 @@ class OrderProcessor:
             if not self.available_courses.is_course_available(product_code):
                 return True, f"Course {product_code} is not available for eCard generation"
 
+            # Log course category for debugging
+            course_type = "Individual" if self.available_courses.is_individual_course(product_code) else "Bundle"
+            logger.debug(f"Course {product_code} is a {course_type} course")
+
             return False, ""
         except Exception as e:
             logger.error(f"Error checking course availability: {e}")
@@ -130,6 +134,13 @@ class OrderProcessor:
 
                 self.driver.get("https://atlas.heart.org/dashboard")
                 time.sleep(5)
+
+                maintenance_msg = check_element_exists(self.driver, (By.XPATH, "//span[contains(text(), 'Our site will be under maintenance')]"))
+                if maintenance_msg:
+                    logger.error("Atlas site is under maintenance")
+                    self.driver.close()
+                    self.driver.switch_to.window(self.driver.window_handles[0])
+                    return False
 
                 login_to_atlas(self.driver)
 
@@ -168,17 +179,25 @@ class OrderProcessor:
 
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
                                available_qyt_selector: str) -> bool:
-        """Process order assignment with proper exception handling."""
+        """Process order assignment with proper exception handling and category-based logic."""
         try:
-            assignment_site = "Assign to Training Site" if training_site.startswith("TS") else "Assign to Instructor"
+            # Get the first order to determine assignment logic
+            first_order = order_data[0]
+            product_code = first_order.get('product_code', '')
 
-            if assignment_site == "Assign to Instructor":
-                return self.process_instructor_assignment(order_data, available_qyt_selector)
-            elif assignment_site == "Assign to Training Site":
-                return self.process_training_site_assignment(order_data, training_site, available_qyt_selector)
+            # Determine assignment type based on course category and training site
+            if self.available_courses.is_individual_course(product_code):
+                # Individual courses: check training site format to decide
+                if training_site.startswith("TS") or "615-230-7991" not in training_site:
+                    logger.info(f"Individual course {product_code} assigned to training site due to training site format")
+                    return self.process_training_site_assignment(order_data, training_site, available_qyt_selector)
+                else:
+                    logger.info(f"Individual course {product_code} assigned to instructor")
+                    return self.process_instructor_assignment(order_data, available_qyt_selector)
             else:
-                logger.warning("Unknown assignment site. Skipping this order.")
-                return False
+                # Bundle courses: prefer training site assignment
+                logger.info(f"Bundle course {product_code} assigned to training site")
+                return self.process_training_site_assignment(order_data, training_site, available_qyt_selector)
 
         except Exception as e:
             logger.error(f"Error in order assignment: {e}")
@@ -259,6 +278,12 @@ class OrderProcessor:
             training_site = first_order.get('training_site', '')
 
             logger.info(f"Processing: {name} - {product_code} ({course_name})")
+
+            # Log course category information
+            if self.available_courses:
+                course_type = "Individual" if self.available_courses.is_individual_course(product_code) else "Bundle"
+                preferred_assignment = self.available_courses.get_preferred_assignment_type(product_code)
+                logger.info(f"Course type: {course_type}, Preferred assignment: {preferred_assignment}")
 
             # Check if course should be skipped
             should_skip, skip_reason = self.should_skip_course(course_name, product_code)

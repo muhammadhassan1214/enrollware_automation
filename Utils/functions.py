@@ -266,7 +266,7 @@ def get_indexes_to_process(driver) -> List[int]:
                 if "redcross" in td2 or "red cross" in td2:
                     continue
 
-                if "complete" in td4:
+                if "complete" in td4 or "cancelled" in td4:
                     continue
 
                 # If not excluded, keep index
@@ -522,6 +522,7 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
             if not course_name_on_ecard:
+                logger.error(f"Course name not found for product code: {product_code}")
                 continue
 
             if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
@@ -576,6 +577,7 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
                 continue
 
+            logger.info(f"Successfully assigned {quantity} of {product_code} ({'Individual' if available_courses.is_individual_course(product_code) else 'Bundle'}) to instructor {name}")
             return True
 
         except Exception as e:
@@ -592,6 +594,10 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
     if not available_courses:
         logger.error("Available courses not initialized")
         return False
+
+    # Check if this is appropriate for training site assignment
+    if available_courses.is_individual_course(product_code):
+        logger.info(f"Course {product_code} is an individual course - typically assigned to instructors, but proceeding with training site assignment as requested")
 
     for attempt in range(max_retries):
         try:
@@ -623,6 +629,7 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
             if not course_name_on_ecard:
+                logger.error(f"Course name not found for product code: {product_code}")
                 continue
 
             if not select_by_text(driver, (By.ID, "courseId"), course_name_on_ecard):
@@ -650,7 +657,7 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
                 continue
 
-            logger.info(f"Successfully assigned {quantity} of {product_code} to training site {training_site}")
+            logger.info(f"Successfully assigned {quantity} of {product_code} ({'Individual' if available_courses.is_individual_course(product_code) else 'Bundle'}) to training site {training_site}")
             return True
 
         except Exception as e:
@@ -788,11 +795,67 @@ def checkout_popup_handling(driver) -> bool:
         return False
 
 
+def clear_cart_on_shop_cpr(driver, max_retries: int = 2) -> bool:
+    """Clear cart on ShopCPR with comprehensive error handling."""
+    if not validate_environment_variables():
+        return False
+
+    for attempt in range(max_retries):
+        try:
+            # Check if cart is empty
+            cart_count = get_element_text(driver, (By.CLASS_NAME, "scpr-cartcount"), timeout=3)
+            cart_count = cart_count.replace("(", "").replace(")", "").strip() if "(" in cart_count else cart_count.strip()
+            logger.info(f"Cart: {cart_count}")
+            if int(cart_count) == 0:
+                logger.info("Cart is already empty")
+                return True
+
+
+            # Navigate to cart
+            if not click_element_by_js(driver, (By.ID, "aha-showcart")):
+                logger.error("Failed to click show cart")
+                continue
+
+            time.sleep(2)
+
+            # Click delete buttons
+            delete_buttons = driver.find_elements(By.XPATH, "//a[contains(@id, 'delete-item')]")
+            for btn in delete_buttons:
+                try:
+                    btn.click()
+                    time.sleep(1)
+                    click_element_by_js(driver, (By.ID, "remove-product"))
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(f"Failed to click delete button: {e}")
+                    continue
+
+            time.sleep(2)
+
+            # Verify cart is empty
+            empty_cart_msg = check_element_exists(driver, (By.XPATH, "//p[contains(text(), 'You have no items in your shopping cart.')]"), timeout=5)
+            if empty_cart_msg:
+                logger.info("Successfully cleared the cart")
+                return True
+            else:
+                logger.error("Cart not empty after clearing attempt")
+                continue
+
+        except Exception as e:
+            logger.error(f"Clear cart attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(3)
+                continue
+
+    logger.error("Failed to clear cart after all attempts")
+    return False
+
 def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int, name: str, max_retries: int = 2) -> bool:
     """Make purchase on ShopCPR with comprehensive error handling."""
     if not validate_environment_variables():
         return False
 
+    is_individual = available_courses.is_individual_course(product_code) if available_courses else False
     original_window = driver.current_window_handle
 
     for attempt in range(max_retries):
@@ -804,6 +867,11 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
             # Login to ShopCPR
             if not login_to_shop_cpr(driver):
                 logger.error("Failed to login to ShopCPR for purchase")
+                continue
+
+            # Clear cart
+            if not clear_cart_on_shop_cpr(driver):
+                logger.error("Failed to clear cart before purchase")
                 continue
 
             # Navigate to Course Cards
@@ -839,6 +907,17 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 continue
 
             time.sleep(3)
+
+            if not is_individual:
+                if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'View Details']")):
+                    logger.error("Failed to click View Details for bundle")
+                    continue
+
+                time.sleep(2)
+
+                if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'bundle-slide']")):
+                    logger.error("Failed to click Add to Cart for bundle")
+                    continue
 
             # Input quantity
             if not input_element(driver, (By.XPATH, "//input[@id= 'qty']"), str(quantity_to_order)):
@@ -886,6 +965,32 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 continue
 
             time.sleep(3)
+
+            if not is_individual: # If the order is a bundle
+                if not click_element_by_js(driver, (By.ID, "taxStatus")):
+                    logger.error("Failed to click purchase code")
+                    continue
+
+                time.sleep(1)
+                training_site_name = get_training_site_name(product_code)
+                is_training_site_availabel = check_element_exists(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]"))
+
+                if is_training_site_availabel:
+                    if not click_element_by_js(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]")):
+                        logger.error("Failed to select training site")
+                        continue
+                else:
+                    if not click_element_by_js(driver, (By.XPATH, "//a[contains(text(), '3SLHD-619865-Shell CPR')]")):
+                        logger.error("Failed to select purchase code")
+                        continue
+
+                time.sleep(1)
+
+                if not click_element_by_js(driver, (By.ID, "purchase-continue-btn")):
+                    logger.error("Failed to apply purchase code")
+                    continue
+
+                time.sleep(1)
 
             # Input PO number
             if not input_element(driver, (By.ID, "po_number"), name):
