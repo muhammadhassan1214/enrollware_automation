@@ -401,27 +401,6 @@ def mark_order_as_complete(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def course_not_available(driver, product_code: str) -> bool:
-    """Handle course not available scenario with error handling."""
-    try:
-        logger.warning(f"Course {product_code} is not available for eCard generation")
-
-        # Go back and click back button
-        go_back(driver)
-        time.sleep(1)
-
-        if click_element_by_js(driver, (By.ID, "mainContent_backButton")):
-            logger.info("Successfully handled course not available scenario")
-            return True
-        else:
-            logger.error("Failed to click back button in course_not_available")
-            return False
-
-    except Exception as e:
-        logger.error(f"Error handling course not available: {e}")
-        return False
-
-
 def qyt_not_available(driver, product_code: str, available_qyt_on_ecard: int, quantity: int) -> bool:
     """Handle quantity not available scenario with error handling."""
     try:

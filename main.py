@@ -235,7 +235,26 @@ class OrderProcessor:
             if available_qyt < quantity_int:
                 quantity_to_order = quantity_int - available_qyt
                 logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
-                make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
+
+                # Retry purchase if it fails
+                purchase_success = False
+                for purchase_attempt in range(2):  # Try purchase twice
+                    if make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name):
+                        purchase_success = True
+                        break
+                    else:
+                        logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
+                        if purchase_attempt < 1:  # If not last attempt
+                            time.sleep(3)
+
+                if not purchase_success:
+                    logger.error(f"Failed to purchase {quantity_to_order} eCards for {product_code} after all attempts")
+                    return False
+
+                # Refresh eCards inventory page after successful purchase
+                logger.info("Refreshing eCards inventory after purchase...")
+                self.driver.refresh()
+                time.sleep(5)  # Wait for inventory to update
 
             # Assign the order
             assignment_func(self.driver, name, quantity, product_code)
@@ -280,22 +299,54 @@ class OrderProcessor:
                 self.safe_click_back_button()
                 return True  # Not an error, just skipped
 
-            # Setup Atlas session
+            # Setup eCards session
             if not self.setup_eCards_session():
-                logger.error(f"Failed to setup Atlas session for row {index}")
+                logger.error(f"Failed to setup eCards session for row {index}")
                 self.safe_click_back_button()
                 return False
 
-            # Check course availability
+            # Check course availability in eCards inventory
             common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
             available_course_selector = f"{common_selector}[@role='button']"
             available_qyt_selector = f"{common_selector}[1]"
 
             available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
             if not available_course:
-                logger.warning(f"Course {product_code} not available for eCard generation")
-                course_not_available(self.driver, product_code)
-                return False
+                logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
+
+                # Get the required quantity from the first order
+                first_order = order_data[0]
+                quantity_needed = int(first_order.get('quantity', 1))
+
+                # Purchase the exact quantity needed
+                purchase_success = False
+                for purchase_attempt in range(2):  # Try purchase twice
+                    if make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name):
+                        purchase_success = True
+                        break
+                    else:
+                        logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
+                        if purchase_attempt < 1:  # If not last attempt
+                            time.sleep(3)
+
+                if not purchase_success:
+                    logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
+                    self.safe_navigate_back()
+                    self.safe_click_back_button()
+                    return False
+
+                # Refresh eCards inventory page after purchase
+                logger.info("Refreshing eCards inventory after purchase...")
+                self.driver.refresh()
+                time.sleep(5)  # Wait for inventory to update
+
+                # Check again if course is now available
+                available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
+                if not available_course:
+                    logger.error(f"Course {product_code} still not available after purchase")
+                    self.safe_navigate_back()
+                    self.safe_click_back_button()
+                    return False
 
             # Process order assignment
             if not self.process_order_assignment(order_data, training_site, available_qyt_selector):
