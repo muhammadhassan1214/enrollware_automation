@@ -734,6 +734,10 @@ def login_to_shop_cpr(driver, max_retries: int = 3) -> bool:
 
                 time.sleep(3)
 
+                if driver.current_url == "https://shopcpr.heart.org/":
+                    logger.info(f"Login to ShopCPR succeeded")
+                    return True
+
                 # Input credentials
                 if not input_element(driver, (By.ID, "Email"), os.getenv("SHOP_CPR_USERNAME")):
                     logger.error("Failed to input ShopCPR email")
@@ -886,7 +890,16 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click Heartsaver Bundles")
                 continue
 
-            time.sleep(3)
+            time.sleep(1)
+
+            # check if the results are displaying if not then clear the site cookies and refresh the page
+            if not check_element_exists(driver, (By.XPATH, "//h1[contains(text(), 'Heartsaver Bundles Products')]"), timeout=5):
+                driver.delete_all_cookies()
+                driver.refresh()
+                time.sleep(5)
+                if not check_element_exists(driver, (By.XPATH, "//button[@title= 'Search Product']"), timeout=5):
+                    logger.error("Failed to load Course Cards page after clearing cookies")
+                    continue
 
             # Click search button
             if not click_element_by_js(driver, (By.XPATH, "//button[@title= 'Search Product']")):
