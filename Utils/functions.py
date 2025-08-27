@@ -113,15 +113,15 @@ def navigate_to_tc_product_orders(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def login_to_atlas(driver, max_retries: int = 3) -> bool:
-    """Login to Atlas with comprehensive error handling and retry logic."""
+def login_to_ecards(driver, max_retries: int = 3) -> bool:
+    """Login to eCards with comprehensive error handling and retry logic."""
     if not validate_environment_variables():
         return False
 
     for attempt in range(max_retries):
         try:
             # Check if already logged in
-            if "dashboard" in driver.current_url and "atlas.heart.org" in driver.current_url:
+            if "https://ecards.heart.org/inventory" == driver.current_url:
                 return True
 
             # Check for sign-in button
@@ -134,8 +134,8 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
 
                 time.sleep(3)
 
-                # Check if redirected to dashboard
-                if "dashboard" in driver.current_url:
+                # Check if redirected to inventory
+                if "inventory" in driver.current_url:
                     return True
 
             # Proceed with login if email field exists
@@ -164,14 +164,14 @@ def login_to_atlas(driver, max_retries: int = 3) -> bool:
                 time.sleep(5)
 
                 # Verify login success
-                if "dashboard" in driver.current_url or "atlas.heart.org" in driver.current_url:
+                if "https://ecards.heart.org/inventory" == driver.current_url:
                     return True
                 else:
                     continue
             else:
                 return True
 
-        except Exception as e:
+        except:
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue

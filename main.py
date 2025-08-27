@@ -132,7 +132,7 @@ class OrderProcessor:
                 self.driver.execute_script("window.open('');")
                 self.driver.switch_to.window(self.driver.window_handles[-1])
 
-                self.driver.get("https://atlas.heart.org/dashboard")
+                self.driver.get("https://ecards.heart.org/inventory")
                 time.sleep(5)
 
                 maintenance_msg = check_element_exists(self.driver, (By.XPATH, "//span[contains(text(), 'Our site will be under maintenance')]"))
@@ -142,7 +142,7 @@ class OrderProcessor:
                     self.driver.switch_to.window(self.driver.window_handles[0])
                     return False
 
-                login_to_atlas(self.driver)
+                login_to_ecards(self.driver)
 
                 if not navigate_to_eCard_section(self.driver):
                     logger.warning("eCard navigation failed; retrying")
@@ -153,7 +153,7 @@ class OrderProcessor:
 
                 # If redirected to login after click, try once more
                 if "login" in self.driver.current_url.lower():
-                    login_to_atlas(self.driver)
+                    login_to_ecards(self.driver)
                     if not navigate_to_eCard_section(self.driver):
                         logger.error("Second navigation to eCard failed after login")
                         self.driver.close()
