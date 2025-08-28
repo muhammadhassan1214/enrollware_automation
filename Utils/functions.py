@@ -180,66 +180,6 @@ def login_to_ecards(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def navigate_to_eCard_section(driver, max_retries: int = 3, switch_timeout: float = 5.0) -> bool:
-    """Navigate to eCard section, handling new tab opening and switching focus."""
-    for attempt in range(max_retries):
-        try:
-            # Hover over Training Center
-            if not move_to_element(driver, (By.XPATH, "//button[@id= 'Training Center']")):
-                logger.error("Failed to hover over Training Center button")
-                continue
-            time.sleep(0.5)
-
-            existing_handles = driver.window_handles[:]
-
-            # Click eCards link (opens a new tab)
-            if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'eCards']")):
-                logger.error("Failed to click eCards link")
-                continue
-
-            # Wait for a new window handle (if target=_blank)
-            new_handle = None
-            end_time = time.time() + switch_timeout
-            while time.time() < end_time:
-                current_handles = driver.window_handles
-                if len(current_handles) > len(existing_handles):
-                    diff = list(set(current_handles) - set(existing_handles))
-                    if diff:
-                        new_handle = diff[0]
-                        break
-                time.sleep(0.2)
-
-            if new_handle:
-                driver.switch_to.window(new_handle)
-                logger.info("Switched to new eCards tab")
-            else:
-                logger.debug("No new tab detected; assuming same-tab navigation")
-
-            # Verify navigation (URL or page content)
-            for _ in range(20):  # up to ~10s
-                url_ok = "Inventory" in driver.current_url.lower()
-                marker = check_element_exists(
-                    driver,
-                    (By.XPATH, "//span[text()= 'eCard Inventory']"),
-                    timeout=1
-                )
-                if url_ok or marker:
-                    logger.info("Successfully navigated to eCard section")
-                    return True
-                time.sleep(0.5)
-
-            logger.warning("eCard page verification not found; assuming success after click")
-            return True
-
-        except Exception as e:
-            logger.error(f"eCard navigation attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-
-    logger.error("Failed to navigate to eCard section")
-    return False
-
-
 def get_indexes_to_process(driver) -> List[int]:
     """Get valid row indexes to process with comprehensive error handling."""
     valid_indexes = []
@@ -401,27 +341,6 @@ def mark_order_as_complete(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def qyt_not_available(driver, product_code: str, available_qyt_on_ecard: int, quantity: int) -> bool:
-    """Handle quantity not available scenario with error handling."""
-    try:
-        logger.warning(f"Quantity not available for {product_code}. Available: {available_qyt_on_ecard}, Requested: {quantity}")
-
-        # Go back and click back button
-        go_back(driver)
-        time.sleep(1)
-
-        if click_element_by_js(driver, (By.ID, "mainContent_backButton")):
-            logger.info("Successfully handled quantity not available scenario")
-            return True
-        else:
-            logger.error("Failed to click back button in qyt_not_available")
-            return False
-
-    except Exception as e:
-        logger.error(f"Error handling quantity not available: {e}")
-        return False
-
-
 def go_back(driver, max_retries: int = 3) -> bool:
     """Go back by closing tabs with comprehensive error handling."""
     for attempt in range(max_retries):
@@ -477,14 +396,12 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
 
     for attempt in range(max_retries):
         try:
-            time.sleep(2)
-
             # Click on the course
             available_course_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td[@role='button']"
             if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click 'Assign to Instructor'
             if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Instructor')]")):
@@ -496,7 +413,7 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             if not select_by_text(driver, (By.ID, "RoleId"), 'TC Admin'):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
@@ -507,32 +424,32 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Select training center
             if not select_by_text(driver, (By.ID, "ddlTC"), 'Shell CPR, LLC.'):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click assign to dropdown
             if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Select instructor by name
             instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
             if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click move next
             if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Input quantity
             if not input_element(driver, (By.ID, "qty1"), str(quantity)):
@@ -544,13 +461,13 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             if not click_element_by_js(driver, (By.ID, "btnConfirm")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click complete
             if not click_element_by_js(driver, (By.ID, "btnComplete")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Go to inventory
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
@@ -585,7 +502,7 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click 'Assign to Training Site'
             if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Training Site')]")):
@@ -597,13 +514,13 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not select_by_text(driver, (By.ID, "tcId"), 'Shell CPR, LLC.'):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Select training site
             if not select_by_text(driver, (By.ID, "tsList"), training_site):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Select course
             course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
@@ -614,7 +531,7 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not select_by_text(driver, (By.ID, "courseId"), course_name_on_ecard):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Input quantity
             if not input_element(driver, (By.ID, "qty"), str(quantity)):
@@ -624,13 +541,13 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not click_element_by_js(driver, (By.ID, "btnValidate")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click complete
             if not click_element_by_js(driver, (By.ID, "btnComplete")):
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Go to inventory
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
@@ -695,8 +612,9 @@ def login_to_shop_cpr(driver, max_retries: int = 3) -> bool:
         return False
 
     for attempt in range(max_retries):
+        shop_cpr_url = "https://shopcpr.heart.org/"
         try:
-            if not safe_navigate_to_url(driver, "https://shopcpr.heart.org/"):
+            if not safe_navigate_to_url(driver, shop_cpr_url):
                 continue
 
             time.sleep(5)
@@ -713,7 +631,7 @@ def login_to_shop_cpr(driver, max_retries: int = 3) -> bool:
 
                 time.sleep(3)
 
-                if driver.current_url == "https://shopcpr.heart.org/":
+                if driver.current_url == shop_cpr_url:
                     logger.info(f"Login to ShopCPR succeeded")
                     return True
 
@@ -722,22 +640,22 @@ def login_to_shop_cpr(driver, max_retries: int = 3) -> bool:
                     logger.error("Failed to input ShopCPR email")
                     continue
 
-                time.sleep(2)
+                time.sleep(1)
 
                 if not input_element(driver, (By.ID, "Password"), os.getenv("SHOP_CPR_PASSWORD")):
                     logger.error("Failed to input ShopCPR password")
                     continue
 
-                time.sleep(2)
+                time.sleep(1)
 
                 if not click_element_by_js(driver, (By.ID, "btnSignIn")):
                     logger.error("Failed to click ShopCPR sign-in button")
                     continue
 
-                time.sleep(5)
+                time.sleep(3)
 
                 # Verify login success
-                if "account" in driver.current_url.lower() or not check_element_exists(driver, (By.XPATH, "//a[contains(@href, 'login')]"), timeout=3):
+                if shop_cpr_url == driver.current_url.lower() or not check_element_exists(driver, (By.XPATH, "//a[contains(@href, 'login')]"), timeout=3):
                     logger.info("Successfully logged into ShopCPR")
                     return True
                 else:
@@ -852,7 +770,7 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to login to ShopCPR for purchase")
                 continue
 
-            # Clear cart
+            # Clear cart to ensure no previous items are present
             if not clear_cart_on_shop_cpr(driver):
                 logger.error("Failed to clear cart before purchase")
                 continue
@@ -862,7 +780,7 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click Course Cards")
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Navigate to Heartsaver Bundles
             if not click_element_by_js(driver, (By.XPATH, "//span[text()= 'Heartsaver Bundles']/parent::a")):
@@ -885,7 +803,7 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click search button")
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Search for product
             if not input_element(driver, (By.XPATH, "//input[@id= 'searchtext']"), product_code):
@@ -898,7 +816,7 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click search button")
                 continue
 
-            time.sleep(3)
+            time.sleep(2)
 
             if not is_individual:
                 if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'View Details']")):
@@ -926,9 +844,10 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
             time.sleep(3)
 
             # Show cart
-            if not click_element_by_js(driver, (By.XPATH, "//a[@id= 'aha-showcart']")):
-                logger.error("Failed to show cart")
-                continue
+            if not check_element_exists(driver, (By.ID, "minicart-content-wrapper"), timeout=5):
+                if not click_element_by_js(driver, (By.XPATH, "//a[@id= 'aha-showcart']")):
+                    logger.error("Failed to show cart")
+                    continue
 
             time.sleep(2)
 
@@ -937,11 +856,11 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click checkout")
                 continue
 
-            time.sleep(3)
+            time.sleep(2)
 
             # Handle popup
             checkout_popup_handling(driver)
-            time.sleep(2)
+            time.sleep(1)
 
             # Input security ID
             security_id = os.getenv("SHOP_CPR_SECURITY_ID")
@@ -956,7 +875,7 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to proceed to checkout")
                 continue
 
-            time.sleep(3)
+            time.sleep(2)
 
             if not is_individual: # If the order is a bundle
                 if not click_element_by_js(driver, (By.ID, "taxStatus")):
