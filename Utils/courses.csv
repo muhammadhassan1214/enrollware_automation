@@ -1,12 +1,14 @@
 SKU,Name,Category
+20-3000,ACLS Provider,TRUE
 20-3001,BLS Provider,TRUE
 20-3002,Heartsaver First Aid CPR AED,TRUE
 20-3003,Heartsaver Pediatric First Aid CPR AED,TRUE
 20-3004,Heartsaver CPR AED,TRUE
 20-3005,Heartsaver First Aid,TRUE
+20-3006,PALS Provider,TRUE
 20-3016,BLS Instructor,TRUE
 20-3011,Heartsaver for K-12 Schools,TRUE
-20-3018,Advisor: BLS,TRUE
+20-3018,Advisor: BLS eCard,TRUE
 20-3102,BLS Provider Manual eBook,TRUE
 20-1601,"Heartsaver® First Aid CPR AED Blended Learning Bundle (eLearning with eBook, eCard)",FALSE
 20-1492,"Heartsaver® First Aid CPR AED Digital Bundle (eBook, eCard)",FALSE

@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import sys
 import os
 from datetime import datetime
+import csv
 
 # Configure logging with simplified output
 def setup_logging():
@@ -55,6 +56,20 @@ print("=" * 50)
 print("ENROLLWARE AUTOMATION STARTING")
 print("=" * 50)
 logger.info(f"Application started - Log file: {log_file}")
+
+FAILED_ORDERS_CSV = "failed_orders.csv"
+
+def log_failed_order(order: Dict[str, Any], reason: str):
+    """Append failed order info to failed_orders.csv."""
+    file_exists = os.path.isfile(FAILED_ORDERS_CSV)
+    with open(FAILED_ORDERS_CSV, "a", newline='', encoding='utf-8') as csvfile:
+        fieldnames = list(order.keys()) + ["failure_reason"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        order_row = dict(order)
+        order_row["failure_reason"] = reason
+        writer.writerow(order_row)
 
 class OrderProcessor:
     def __init__(self):
@@ -165,35 +180,99 @@ class OrderProcessor:
         logger.error("Failed to setup eCards session")
         return False
 
+    def is_acls_pals_course(self, course_name: str) -> bool:
+        """Check if course is ACLS or PALS based on course name."""
+        if not course_name:
+            return False
+
+        course_upper = course_name.upper()
+        return 'ACLS' in course_upper or 'PALS' in course_upper
+
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
                                available_qyt_selector: str) -> bool:
-        """Process order assignment with proper exception handling and category-based logic."""
-        try:
-            # Get the first order to determine assignment logic
-            first_order = order_data[0]
-            product_code = first_order.get('product_code', '')
+        """Process order assignment with proper exception handling and individual order logic."""
+        all_success = True
+        for order in order_data:
+            product_code = order.get('product_code', '')
+            course_name = order.get('course_name', '')
+            name = order.get('name', '')
+            quantity = order.get('quantity', 0)
 
-            # Determine assignment type based on course category and training site
-            if self.available_courses.is_individual_course(product_code):
-                # Individual courses: check training site format to decide
-                if training_site.startswith("TS") or "615-230-7991" not in training_site:
-                    logger.info(f"Individual course {product_code} assigned to training site due to training site format")
-                    return self.process_training_site_assignment(order_data, training_site, available_qyt_selector)
+            logger.info(f"Processing individual order: {product_code} - {course_name}")
+
+            try:
+                # Priority check: ACLS/PALS courses go to Admin Instructor
+                if self.is_acls_pals_course(course_name):
+                    logger.info(f"ACLS/PALS course {product_code} ({course_name}) assigned to Admin Instructor")
+                    if not assign_to_admin_instructor(self.driver, name, str(quantity), product_code):
+                        reason = f"Failed to assign ACLS/PALS course {product_code} to Admin Instructor"
+                        logger.error(reason)
+                        log_failed_order(order, reason)
+                        all_success = False
+                    continue
+
+                # For non-ACLS/PALS courses, apply individual/bundle logic
+                if self.available_courses.is_individual_course(product_code):
+                    if training_site.startswith("TS"):
+                        logger.info(f"Individual course {product_code} assigned to training site due to TS prefix")
+                        if not self.process_single_order(order, available_qyt_selector,
+                                                        lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, self.get_training_site_name_for_order(training_site))):
+                            reason = f"Failed to assign individual course {product_code} to training site"
+                            logger.error(reason)
+                            log_failed_order(order, reason)
+                            all_success = False
+                    else:
+                        logger.info(f"Individual course {product_code} assigned to instructor")
+                        if not self.process_single_order(order, available_qyt_selector, assign_to_instructor):
+                            reason = f"Failed to assign individual course {product_code} to instructor"
+                            logger.error(reason)
+                            log_failed_order(order, reason)
+                            all_success = False
                 else:
-                    logger.info(f"Individual course {product_code} assigned to instructor")
-                    return self.process_instructor_assignment(order_data, available_qyt_selector)
-            else:
-                # Bundle courses: prefer training site assignment
-                logger.info(f"Bundle course {product_code} assigned to training site")
-                return self.process_training_site_assignment(order_data, training_site, available_qyt_selector)
+                    # Bundle courses: prefer training site assignment
+                    logger.info(f"Bundle course {product_code} assigned to training site")
+                    if not self.process_single_order(order, available_qyt_selector,
+                                                    lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, self.get_training_site_name_for_order(training_site))):
+                        reason = f"Failed to assign bundle course {product_code} to training site"
+                        logger.error(reason)
+                        log_failed_order(order, reason)
+                        all_success = False
+            except Exception as e:
+                reason = f"Exception during order assignment: {e}"
+                logger.error(reason)
+                log_failed_order(order, reason)
+                all_success = False
 
+        return all_success
+
+    def get_training_site_name_for_order(self, training_site: str) -> str:
+        """Get training site name for order assignment."""
+        code = training_site.split(' ')[0].strip() if ' ' in training_site else training_site.strip()
+        training_site_name = get_training_site_name(code)
+        return training_site_name if training_site_name else "Unknown Training Site"
+
+    def process_admin_instructor_assignment(self, order_data: List[Dict[str, Any]]) -> bool:
+        """Process Admin Instructor assignment for ACLS/PALS courses with exception handling."""
+        try:
+            # This method is now only called for ACLS/PALS bypass scenario
+            # Individual order processing is handled in process_order_assignment
+            for order in order_data:
+                name = order.get('name', '')
+                product_code = order.get('product_code', '')
+                quantity = order.get('quantity', 0)
+
+                # For ACLS/PALS courses, bypass quantity checks and proceed directly
+                if not assign_to_admin_instructor(self.driver, name, str(quantity), product_code):
+                    return False
+            return True
         except Exception as e:
-            logger.error(f"Error in order assignment: {e}")
+            logger.error(f"Error in Admin Instructor assignment: {e}")
             return False
 
     def process_instructor_assignment(self, order_data: List[Dict[str, Any]], available_qyt_selector: str) -> bool:
         """Process instructor assignment with exception handling."""
         try:
+            # This method is now only used for non-mixed order scenarios
             for order in order_data:
                 if not self.process_single_order(order, available_qyt_selector, assign_to_instructor):
                     return False
@@ -206,6 +285,7 @@ class OrderProcessor:
                                        available_qyt_selector: str) -> bool:
         """Process training site assignment with exception handling."""
         try:
+            # This method is now only used for non-mixed order scenarios
             code = training_site.split(' ')[0].strip() if ' ' in training_site else training_site.strip()
             training_site_name = get_training_site_name(code)
 
@@ -227,7 +307,8 @@ class OrderProcessor:
             quantity = order.get('quantity', 0)
 
             # Get available quantity
-            available_qyt_text = get_element_text(self.driver, (By.XPATH, available_qyt_selector))
+            xpath = available_qyt_selector.format(product_code)
+            available_qyt_text = get_element_text(self.driver, (By.XPATH, xpath))
             available_qyt = int(available_qyt_text) if available_qyt_text.isdigit() else 0
             quantity_int = int(quantity) if str(quantity).isdigit() else 0
 
@@ -248,7 +329,9 @@ class OrderProcessor:
                             time.sleep(3)
 
                 if not purchase_success:
-                    logger.error(f"Failed to purchase {quantity_to_order} eCards for {product_code} after all attempts")
+                    reason = f"Failed to purchase {quantity_to_order} eCards for {product_code} after all attempts"
+                    logger.error(reason)
+                    log_failed_order(order, reason)
                     return False
 
                 # Refresh eCards inventory page after successful purchase
@@ -257,11 +340,17 @@ class OrderProcessor:
                 time.sleep(5)  # Wait for inventory to update
 
             # Assign the order
-            assignment_func(self.driver, name, quantity, product_code)
+            if not assignment_func(self.driver, name, quantity, product_code):
+                reason = f"Assignment function failed for {product_code}"
+                logger.error(reason)
+                log_failed_order(order, reason)
+                return False
             return True
 
         except Exception as e:
-            logger.error(f"Error processing single order: {e}")
+            reason = f"Error processing single order: {e}"
+            logger.error(reason)
+            log_failed_order(order, reason)
             return False
 
     def process_single_row(self, index: int) -> bool:
@@ -278,26 +367,37 @@ class OrderProcessor:
                 self.safe_click_back_button()
                 return False
 
+            # Log all orders in this row
+            logger.info(f"Found {len(order_data)} orders in row {index}:")
+            for i, order in enumerate(order_data, 1):
+                course_name = order.get('course_name', '')
+                product_code = order.get('product_code', '')
+                quantity = order.get('quantity', 0)
+                logger.info(f"  {i}. {quantity} {product_code} {course_name}")
+
             first_order = order_data[0]
             course_name = first_order.get('course_name', '')
             product_code = first_order.get('product_code', '')
             name = first_order.get('name', '')
             training_site = first_order.get('training_site', '')
 
-            logger.info(f"Processing: {name} - {product_code} ({course_name})")
+            logger.info(f"Processing for: {name} - Training Site: {training_site}")
 
-            # Log course category information
-            if self.available_courses:
-                course_type = "Individual" if self.available_courses.is_individual_course(product_code) else "Bundle"
-                preferred_assignment = self.available_courses.get_preferred_assignment_type(product_code)
-                logger.info(f"Course type: {course_type}, Preferred assignment: {preferred_assignment}")
+            # Check if any order contains ACLS/PALS
+            has_acls_pals = any(self.is_acls_pals_course(order.get('course_name', '')) for order in order_data)
+            if has_acls_pals:
+                acls_pals_courses = [order.get('course_name', '') for order in order_data if self.is_acls_pals_course(order.get('course_name', ''))]
+                logger.info(f"Detected ACLS/PALS courses in order: {acls_pals_courses}")
 
-            # Check if course should be skipped
-            should_skip, skip_reason = self.should_skip_course(course_name, product_code)
-            if should_skip:
-                logger.info(f"Skipped: {skip_reason}")
-                self.safe_click_back_button()
-                return True  # Not an error, just skipped
+            # Check if any course should be skipped
+            for order in order_data:
+                course_name = order.get('course_name', '')
+                product_code = order.get('product_code', '')
+                should_skip, skip_reason = self.should_skip_course(course_name, product_code)
+                if should_skip:
+                    logger.info(f"Skipping entire order due to: {skip_reason}")
+                    self.safe_click_back_button()
+                    return True  # Not an error, just skipped
 
             # Setup eCards session
             if not self.setup_eCards_session():
@@ -305,52 +405,89 @@ class OrderProcessor:
                 self.safe_click_back_button()
                 return False
 
-            # Check course availability in eCards inventory
-            common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
-            available_course_selector = f"{common_selector}[@role='button']"
-            available_qyt_selector = f"{common_selector}[1]"
+            # Check if all orders are ACLS/PALS (bypass inventory checks completely)
+            all_acls_pals = all(self.is_acls_pals_course(order.get('course_name', '')) for order in order_data)
 
-            available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-            if not available_course:
-                logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
+            if all_acls_pals:
+                logger.info(f"All courses are ACLS/PALS - bypassing inventory checks completely")
 
-                # Get the required quantity from the first order
-                first_order = order_data[0]
-                quantity_needed = int(first_order.get('quantity', 1))
-
-                # Purchase the exact quantity needed
-                purchase_success = False
-                for purchase_attempt in range(2):  # Try purchase twice
-                    if make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name):
-                        purchase_success = True
-                        break
-                    else:
-                        logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
-                        if purchase_attempt < 1:  # If not last attempt
-                            time.sleep(3)
-
-                if not purchase_success:
-                    logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
+                # Process all ACLS/PALS assignments directly without inventory checks
+                if self.process_admin_instructor_assignment(order_data):
+                    # Complete the order
+                    self.safe_navigate_back()
+                    mark_order_as_complete(self.driver)
+                    logger.info(f"✓ Successfully completed all ACLS/PALS row {index}")
+                    return True
+                else:
+                    logger.error(f"✗ Failed to process all ACLS/PALS assignments for row {index} - no retry")
                     self.safe_navigate_back()
                     self.safe_click_back_button()
                     return False
 
-                # Refresh eCards inventory page after purchase
-                logger.info("Refreshing eCards inventory after purchase...")
-                self.driver.refresh()
-                time.sleep(5)  # Wait for inventory to update
+            # For mixed orders or non-ACLS/PALS courses, proceed with inventory checks for non-ACLS/PALS items
+            non_acls_pals_orders = [order for order in order_data if not self.is_acls_pals_course(order.get('course_name', ''))]
 
-                # Check again if course is now available
-                available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-                if not available_course:
-                    logger.error(f"Course {product_code} still not available after purchase")
-                    self.safe_navigate_back()
-                    self.safe_click_back_button()
-                    return False
+            if non_acls_pals_orders:
+                logger.info(f"Checking inventory for {len(non_acls_pals_orders)} non-ACLS/PALS courses")
 
-            # Process order assignment
-            if not self.process_order_assignment(order_data, training_site, available_qyt_selector):
-                logger.error(f"Failed to process order assignment for row {index}")
+                # Check inventory availability for non-ACLS/PALS courses
+                for order in non_acls_pals_orders:
+                    product_code = order.get('product_code', '')
+                    course_name = order.get('course_name', '')
+                    quantity_needed = int(order.get('quantity', 1))
+
+                    common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
+                    available_course_selector = f"{common_selector}[@role='button']"
+
+                    available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
+                    if not available_course:
+                        logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
+
+                        # Purchase the exact quantity needed
+                        purchase_success = False
+                        for purchase_attempt in range(2):  # Try purchase twice
+                            if make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name):
+                                purchase_success = True
+                                break
+                            else:
+                                logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
+                                if purchase_attempt < 1:  # If not last attempt
+                                    time.sleep(3)
+
+                        if not purchase_success:
+                            logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
+                            self.safe_navigate_back()
+                            self.safe_click_back_button()
+                            return False
+
+                        # Refresh eCards inventory page after purchase
+                        logger.info("Refreshing eCards inventory after purchase...")
+                        self.driver.refresh()
+                        time.sleep(5)  # Wait for inventory to update
+
+                        # Check again if course is now available
+                        available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
+                        if not available_course:
+                            logger.error(f"Course {product_code} still not available after purchase")
+                            self.safe_navigate_back()
+                            self.safe_click_back_button()
+                            return False
+
+            # Process mixed order assignment (each order individually)
+            common_selector_base = "//td[contains(text(), '{}')]/preceding-sibling::td[1]"
+
+            assignment_success = False
+            for assignment_attempt in range(2):  # Retry assignment once if it fails
+                if self.process_order_assignment(order_data, training_site, common_selector_base):
+                    assignment_success = True
+                    break
+                else:
+                    logger.warning(f"Assignment attempt {assignment_attempt + 1} failed for row {index}")
+                    if assignment_attempt < 1:  # If not last attempt
+                        time.sleep(3)
+
+            if not assignment_success:
+                logger.error(f"Failed to process order assignment for row {index} after all attempts")
                 self.safe_navigate_back()
                 self.safe_click_back_button()
                 return False
@@ -359,7 +496,7 @@ class OrderProcessor:
             self.safe_navigate_back()
             mark_order_as_complete(self.driver)
 
-            logger.info(f"✓ Successfully completed row {index}")
+            logger.info(f"✓ Successfully completed row {index} with {len(order_data)} orders")
             return True
 
         except Exception as e:
@@ -425,10 +562,10 @@ def main():
         processor.cleanup()
 
 
-SCHEDULE_INTERVAL_SECONDS = 30 * 60  # 30 minutes
+SCHEDULE_INTERVAL_SECONDS = 15 * 60  # 15 minutes
 
-def run_every_30_minutes():
-    logger.info("Starting scheduled automation (runs every 30 minutes)")
+def run_every_15_minutes():
+    logger.info("Starting scheduled automation (runs every 15 minutes)")
     run_count = 0
 
     while True:
@@ -454,12 +591,12 @@ def run_every_30_minutes():
             logger.info(f"Waiting {remaining/60:.1f} minutes...")
             time.sleep(remaining)
         else:
-            logger.info(f"Run #{run_count} took {elapsed:.1f}s (>= 30 minutes). Starting next run immediately.")
+            logger.info(f"Run #{run_count} took {elapsed:.1f}s (>= 15 minutes). Starting next run immediately.")
 
 
 if __name__ == "__main__":
     try:
-        run_every_30_minutes()
+        run_every_15_minutes()
     except KeyboardInterrupt:
         print("\nApplication interrupted by user (Ctrl+C)")
         logger.info("Application interrupted by user")

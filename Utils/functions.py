@@ -751,201 +751,386 @@ def clear_cart_on_shop_cpr(driver, max_retries: int = 2) -> bool:
     logger.error("Failed to clear cart after all attempts")
     return False
 
-def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int, name: str, max_retries: int = 2) -> bool:
-    """Make purchase on ShopCPR with comprehensive error handling."""
+def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int, name: str) -> bool:
+    """Make purchase on ShopCPR without retry logic. If purchasing fails, move onto the next one."""
     if not validate_environment_variables():
         return False
 
     is_individual = available_courses.is_individual_course(product_code) if available_courses else False
     original_window = driver.current_window_handle
 
+    try:
+        # Open new tab
+        driver.execute_script("window.open('');")
+        driver.switch_to.window(driver.window_handles[-1])
+
+        # Login to ShopCPR
+        if not login_to_shop_cpr(driver):
+            logger.error("Failed to login to ShopCPR for purchase")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        # Clear cart to ensure no previous items are present
+        if not clear_cart_on_shop_cpr(driver):
+            logger.error("Failed to clear cart before purchase")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        # Navigate to Course Cards
+        if not click_element_by_js(driver, (By.XPATH, "//span[text()= 'Course Cards']/parent::a")):
+            logger.error("Failed to click Course Cards")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # Navigate to Heartsaver Bundles
+        if not click_element_by_js(driver, (By.XPATH, "//span[text()= 'Heartsaver Bundles']/parent::a")):
+            logger.error("Failed to click Heartsaver Bundles")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # check if the results are displaying if not then clear the site cookies and refresh the page
+        if not check_element_exists(driver, (By.XPATH, "//h1[contains(text(), 'Heartsaver Bundles Products')]"), timeout=5):
+            driver.delete_all_cookies()
+            driver.refresh()
+            time.sleep(5)
+            if not check_element_exists(driver, (By.XPATH, "//button[@title= 'Search Product']"), timeout=5):
+                logger.error("Failed to load Course Cards page after clearing cookies")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+        # Click search button
+        if not click_element_by_js(driver, (By.XPATH, "//button[@title= 'Search Product']")):
+            logger.error("Failed to click search button")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # Search for product
+        if not input_element(driver, (By.XPATH, "//input[@id= 'searchtext']"), product_code):
+            logger.error("Failed to input product code for search")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'btnsearch']")):
+            logger.error("Failed to click search button")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(2)
+
+        if not is_individual:
+            if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'View Details']")):
+                logger.error("Failed to click View Details for bundle")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+            time.sleep(2)
+
+            if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'bundle-slide']")):
+                logger.error("Failed to click Add to Cart for bundle")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+        # Input quantity
+        if not input_element(driver, (By.XPATH, "//input[@id= 'qty']"), str(quantity_to_order)):
+            logger.error("Failed to input quantity")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # Add to cart
+        if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'product-addtocart-button']")):
+            logger.error("Failed to add to cart")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        driver.refresh()
+        time.sleep(3)
+
+        # Show cart
+        if not check_element_exists(driver, (By.ID, "minicart-content-wrapper"), timeout=5):
+            if not click_element_by_js(driver, (By.XPATH, "//a[@id= 'aha-showcart']")):
+                logger.error("Failed to show cart")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+        time.sleep(2)
+
+        # Checkout
+        if not click_element_by_js(driver, (By.ID, "top-cart-btn-checkout")):
+            logger.error("Failed to click checkout")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(2)
+
+        # Handle popup
+        checkout_popup_handling(driver)
+        time.sleep(1)
+
+        # Input security ID
+        security_id = os.getenv("SHOP_CPR_SECURITY_ID")
+        if not input_element(driver, (By.XPATH, "//input[@id= 'sid']"), security_id):
+            logger.error("Failed to input security ID")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # Proceed to checkout
+        if not click_element_by_js(driver, (By.ID, "proceed-checkout")):
+            logger.error("Failed to proceed to checkout")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(2)
+
+        if not is_individual: # If the order is a bundle
+            if not click_element_by_js(driver, (By.ID, "taxStatus")):
+                logger.error("Failed to click purchase code")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+            time.sleep(1)
+            training_site_name = get_training_site_name(product_code)
+            is_training_site_availabel = check_element_exists(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]"))
+
+            if is_training_site_availabel:
+                if not click_element_by_js(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]")):
+                    logger.error("Failed to select training site")
+                    driver.close()
+                    driver.switch_to.window(original_window)
+                    return False
+            else:
+                if not click_element_by_js(driver, (By.XPATH, "//a[contains(text(), '3SLHD-619865-Shell CPR')]")):
+                    logger.error("Failed to select purchase code")
+                    driver.close()
+                    driver.switch_to.window(original_window)
+                    return False
+
+            time.sleep(1)
+
+            if not click_element_by_js(driver, (By.ID, "purchase-continue-btn")):
+                logger.error("Failed to apply purchase code")
+                driver.close()
+                driver.switch_to.window(original_window)
+                return False
+
+            time.sleep(1)
+
+        # Input PO number
+        if not input_element(driver, (By.ID, "po_number"), name):
+            logger.error("Failed to input PO number")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(1)
+
+        # Proceed to payment
+        if not click_element_by_js(driver, (By.XPATH, "//button[text()= 'Proceed to Payment']")):
+            logger.error("Failed to proceed to payment")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+        time.sleep(5)
+
+        # Check order confirmation
+        if "orderconfirmation" in driver.current_url:
+            logger.info(f"Successfully purchased {quantity_to_order} of {product_code} eCards for {name}")
+
+            # Close tab and return to original
+            driver.close()
+            driver.switch_to.window(original_window)
+            time.sleep(2)
+            driver.refresh()
+            return True
+        else:
+            logger.error(f"Purchase failed - not on confirmation page. Current URL: {driver.current_url}")
+            driver.close()
+            driver.switch_to.window(original_window)
+            return False
+
+    except Exception as e:
+        logger.error(f"Purchase failed for {product_code}: {e}")
+        try:
+            if len(driver.window_handles) > 1:
+                driver.close()
+            if driver.window_handles:
+                driver.switch_to.window(original_window)
+        except:
+            pass
+        return False
+
+
+def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: str, max_retries: int = 2) -> bool:
+    """Assign to Admin Instructor - For ACLS/PALS courses."""
+    if not available_courses:
+        logger.error("Available courses not initialized")
+        return False
+
+    logger.info(f"Assigning {quantity} of {product_code} to Admin Instructor for {name}")
+
     for attempt in range(max_retries):
         try:
-            # Open new tab
-            driver.execute_script("window.open('');")
-            driver.switch_to.window(driver.window_handles[-1])
-
-            # Login to ShopCPR
-            if not login_to_shop_cpr(driver):
-                logger.error("Failed to login to ShopCPR for purchase")
-                continue
-
-            # Clear cart to ensure no previous items are present
-            if not clear_cart_on_shop_cpr(driver):
-                logger.error("Failed to clear cart before purchase")
-                continue
-
-            # Navigate to Course Cards
-            if not click_element_by_js(driver, (By.XPATH, "//span[text()= 'Course Cards']/parent::a")):
-                logger.error("Failed to click Course Cards")
+            # Step 1: Move to manage eCards
+            manage_eCard_selector = "//a[contains(@id, 'accessible-megamenu')]"
+            if not move_to_element(driver, (By.XPATH, manage_eCard_selector)):
+                logger.error("Failed to hover over manage eCards menu")
                 continue
 
             time.sleep(1)
 
-            # Navigate to Heartsaver Bundles
-            if not click_element_by_js(driver, (By.XPATH, "//span[text()= 'Heartsaver Bundles']/parent::a")):
-                logger.error("Failed to click Heartsaver Bundles")
-                continue
-
-            time.sleep(1)
-
-            # check if the results are displaying if not then clear the site cookies and refresh the page
-            if not check_element_exists(driver, (By.XPATH, "//h1[contains(text(), 'Heartsaver Bundles Products')]"), timeout=5):
-                driver.delete_all_cookies()
-                driver.refresh()
-                time.sleep(5)
-                if not check_element_exists(driver, (By.XPATH, "//button[@title= 'Search Product']"), timeout=5):
-                    logger.error("Failed to load Course Cards page after clearing cookies")
-                    continue
-
-            # Click search button
-            if not click_element_by_js(driver, (By.XPATH, "//button[@title= 'Search Product']")):
-                logger.error("Failed to click search button")
-                continue
-
-            time.sleep(1)
-
-            # Search for product
-            if not input_element(driver, (By.XPATH, "//input[@id= 'searchtext']"), product_code):
-                logger.error("Failed to input product code for search")
-                continue
-
-            time.sleep(1)
-
-            if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'btnsearch']")):
-                logger.error("Failed to click search button")
+            # Step 2: Click 'Assign to Instructors'
+            if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Assign to Instructors']")):
+                logger.error("Failed to click 'Assign to Instructors'")
                 continue
 
             time.sleep(2)
 
-            if not is_individual:
-                if not click_element_by_js(driver, (By.XPATH, "//a[@title= 'View Details']")):
-                    logger.error("Failed to click View Details for bundle")
-                    continue
+            # Step 3: Select TS Admin role
+            if not select_by_text(driver, (By.ID, "RoleId"), 'TS Admin'):
+                logger.error("Failed to select TS Admin")
+                continue
 
-                time.sleep(2)
+            time.sleep(1)
 
-                if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'bundle-slide']")):
-                    logger.error("Failed to click Add to Cart for bundle")
-                    continue
+            # Step 4: Select course
+            course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
+            if not course_name_on_ecard:
+                logger.error(f"Course name not found for product code: {product_code}")
+                continue
+
+            if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
+                logger.error("Failed to select course for Admin Instructor")
+                continue
+
+            time.sleep(1)
+
+            # Step 5: Select Training Center
+            if not select_by_text(driver, (By.ID, "ddlTC"), 'CPR Suppliers, LLC'):
+                logger.error("Failed to select Training Center")
+                continue
+
+            time.sleep(1)
+
+            # Step 6: Select Training Site
+            if not select_by_text(driver, (By.ID, "ddlSite"), 'Shell CPR'):
+                logger.error("Failed to select Training Site")
+                continue
+
+            time.sleep(1)
+
+            # Step 7: Select Instructor
+            if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
+                logger.error("Failed to open instructor dropdown")
+                continue
+
+            time.sleep(1)
+
+            # Select instructor by name
+            instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
+            if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
+                logger.error(f"Failed to select instructor: {name}")
+                continue
+
+            time.sleep(1)
+
+            # Step 8: Click Submit button
+            if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
+                logger.error("Failed to click Submit button")
+                continue
+
+            time.sleep(1)
+
+            # Check available quantity
+            available_qyt_element = get_element_text(driver, (By.ID, "tdAvailQty"), default="0")
+            available_qyt = int(available_qyt_element) if available_qyt_element.isdigit() else 0
+
+            if available_qyt < int(quantity):
+                logger.warning(f"Insufficient quantity for {product_code}. Available: {available_qyt}, Required: {quantity}")
+
+                # Navigate back to inventory without retrying
+                try:
+                    # Try to go back to inventory directly
+                    if click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
+                        logger.info("Successfully returned to inventory due to insufficient quantity")
+                    else:
+                        # Alternative method: try to navigate back via browser back
+                        driver.get("https://ecards.heart.org/Inventory")
+                        time.sleep(2)
+                        logger.info("back to inventory via URL navigation")
+                except Exception as nav_error:
+                    logger.error(f"Error navigating back to inventory: {nav_error}")
+
+                return False  # Return False but don't retry
 
             # Input quantity
-            if not input_element(driver, (By.XPATH, "//input[@id= 'qty']"), str(quantity_to_order)):
+            if not input_element(driver, (By.ID, "qty1"), str(quantity)):
                 logger.error("Failed to input quantity")
                 continue
 
             time.sleep(1)
 
-            # Add to cart
-            if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'product-addtocart-button']")):
-                logger.error("Failed to add to cart")
-                continue
-
-            time.sleep(3)
-
-            # Show cart
-            if not check_element_exists(driver, (By.ID, "minicart-content-wrapper"), timeout=5):
-                if not click_element_by_js(driver, (By.XPATH, "//a[@id= 'aha-showcart']")):
-                    logger.error("Failed to show cart")
-                    continue
-
-            time.sleep(2)
-
-            # Checkout
-            if not click_element_by_js(driver, (By.ID, "top-cart-btn-checkout")):
-                logger.error("Failed to click checkout")
-                continue
-
-            time.sleep(2)
-
-            # Handle popup
-            checkout_popup_handling(driver)
-            time.sleep(1)
-
-            # Input security ID
-            security_id = os.getenv("SHOP_CPR_SECURITY_ID")
-            if not input_element(driver, (By.XPATH, "//input[@id= 'sid']"), security_id):
-                logger.error("Failed to input security ID")
+            # Click confirm
+            if not click_element_by_js(driver, (By.ID, "btnConfirm")):
+                logger.error("Failed to confirm assignment")
                 continue
 
             time.sleep(1)
 
-            # Proceed to checkout
-            if not click_element_by_js(driver, (By.ID, "proceed-checkout")):
-                logger.error("Failed to proceed to checkout")
-                continue
-
-            time.sleep(2)
-
-            if not is_individual: # If the order is a bundle
-                if not click_element_by_js(driver, (By.ID, "taxStatus")):
-                    logger.error("Failed to click purchase code")
-                    continue
-
-                time.sleep(1)
-                training_site_name = get_training_site_name(product_code)
-                is_training_site_availabel = check_element_exists(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]"))
-
-                if is_training_site_availabel:
-                    if not click_element_by_js(driver, (By.XPATH, f"//a[contains(text(), '{training_site_name}')]")):
-                        logger.error("Failed to select training site")
-                        continue
-                else:
-                    if not click_element_by_js(driver, (By.XPATH, "//a[contains(text(), '3SLHD-619865-Shell CPR')]")):
-                        logger.error("Failed to select purchase code")
-                        continue
-
-                time.sleep(1)
-
-                if not click_element_by_js(driver, (By.ID, "purchase-continue-btn")):
-                    logger.error("Failed to apply purchase code")
-                    continue
-
-                time.sleep(1)
-
-            # Input PO number
-            if not input_element(driver, (By.ID, "po_number"), name):
-                logger.error("Failed to input PO number")
+            # Click complete
+            if not click_element_by_js(driver, (By.ID, "btnComplete")):
+                logger.error("Failed to complete assignment")
                 continue
 
             time.sleep(1)
 
-            # Proceed to payment
-            if not click_element_by_js(driver, (By.XPATH, "//button[text()= 'Proceed to Payment']")):
-                logger.error("Failed to proceed to payment")
+            # Go to inventory
+            if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
+                logger.error("Failed to return to inventory")
                 continue
 
-            time.sleep(5)
-
-            # Check order confirmation
-            if "orderconfirmation" in driver.current_url:
-                logger.info(f"Successfully purchased {quantity_to_order} of {product_code} eCards for {name}")
-
-                # Close tab and return to original
-                driver.close()
-                driver.switch_to.window(original_window)
-                time.sleep(2)
-                driver.refresh()
-                return True
-            else:
-                logger.error(f"Purchase failed - not on confirmation page. Current URL: {driver.current_url}")
-                continue
+            logger.info(f"Successfully assigned {quantity} of {product_code} (ACLS/PALS) to Admin Instructor for {name}")
+            return True
 
         except Exception as e:
-            logger.error(f"Purchase attempt {attempt + 1} failed: {e}")
+            logger.error(f"Admin Instructor assignment attempt {attempt + 1} failed: {e}")
 
-            # Cleanup on error
-            try:
-                if len(driver.window_handles) > 1:
-                    driver.close()
-                if driver.window_handles:
-                    driver.switch_to.window(original_window)
-            except:
-                pass
+            # If this was a quantity issue, don't retry
+            if "available quantity" in str(e).lower() or "insufficient" in str(e).lower():
+                logger.info("Quantity issue detected - not retrying")
+                return False
 
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
 
-    logger.error(f"Failed to complete purchase for {product_code} after all attempts")
+    logger.error("Failed to assign to Admin Instructor after all attempts")
     return False
