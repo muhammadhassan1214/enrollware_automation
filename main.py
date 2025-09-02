@@ -317,19 +317,10 @@ class OrderProcessor:
                 quantity_to_order = quantity_int - available_qyt
                 logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
 
-                # Retry purchase if it fails
-                purchase_success = False
-                for purchase_attempt in range(2):  # Try purchase twice
-                    if make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name):
-                        purchase_success = True
-                        break
-                    else:
-                        logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
-                        if purchase_attempt < 1:  # If not last attempt
-                            time.sleep(3)
-
+                # No retry logic, just attempt once
+                purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
                 if not purchase_success:
-                    reason = f"Failed to purchase {quantity_to_order} eCards for {product_code} after all attempts"
+                    reason = f"Failed to purchase {quantity_to_order} eCards for {product_code}"
                     logger.error(reason)
                     log_failed_order(order, reason)
                     return False
@@ -443,17 +434,8 @@ class OrderProcessor:
                     if not available_course:
                         logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
 
-                        # Purchase the exact quantity needed
-                        purchase_success = False
-                        for purchase_attempt in range(2):  # Try purchase twice
-                            if make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name):
-                                purchase_success = True
-                                break
-                            else:
-                                logger.warning(f"Purchase attempt {purchase_attempt + 1} failed for {product_code}")
-                                if purchase_attempt < 1:  # If not last attempt
-                                    time.sleep(3)
-
+                        # Purchase the exact quantity needed (no retry logic)
+                        purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name)
                         if not purchase_success:
                             logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
                             self.safe_navigate_back()
