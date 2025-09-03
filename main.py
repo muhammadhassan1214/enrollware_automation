@@ -1,4 +1,5 @@
 from Utils.functions import *
+from ui_purchasing_toggle import purchasing_enabled, show_ui
 import logging
 from typing import List, Dict, Any
 import sys
@@ -315,20 +316,23 @@ class OrderProcessor:
             # Purchase additional if needed
             if available_qyt < quantity_int:
                 quantity_to_order = quantity_int - available_qyt
-                logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
+                if purchasing_enabled():
+                    logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
+                    purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
+                    if not purchase_success:
+                        reason = f"Failed to purchase {quantity_to_order} eCards for {product_code}"
+                        logger.error(reason)
+                        log_failed_order(order, reason)
+                        return False
 
-                # No retry logic, just attempt once
-                purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
-                if not purchase_success:
-                    reason = f"Failed to purchase {quantity_to_order} eCards for {product_code}"
-                    logger.error(reason)
-                    log_failed_order(order, reason)
-                    return False
-
-                # Refresh eCards inventory page after successful purchase
-                logger.info("Refreshing eCards inventory after purchase...")
-                self.driver.refresh()
-                time.sleep(5)  # Wait for inventory to update
+                    # Refresh eCards inventory page after successful purchase
+                    logger.info("Refreshing eCards inventory after purchase...")
+                    self.driver.refresh()
+                    time.sleep(5)  # Wait for inventory to update
+                else:
+                    logger.info(f"Purchasing is OFF. Please purchase {quantity_to_order} of {product_code} manually for order {name}.")
+                    # Skip purchase, continue with next order
+                    return True
 
             # Assign the order
             if not assignment_func(self.driver, name, quantity, product_code):
@@ -434,23 +438,32 @@ class OrderProcessor:
                     if not available_course:
                         logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
 
-                        # Purchase the exact quantity needed (no retry logic)
-                        purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name)
-                        if not purchase_success:
-                            logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
-                            self.safe_navigate_back()
-                            self.safe_click_back_button()
-                            return False
+                        # Check if purchasing is enabled before attempting purchase
+                        if purchasing_enabled():
+                            # Purchase the exact quantity needed (no retry logic)
+                            purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name)
+                            if not purchase_success:
+                                logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
+                                self.safe_navigate_back()
+                                self.safe_click_back_button()
+                                return False
 
-                        # Refresh eCards inventory page after purchase
-                        logger.info("Refreshing eCards inventory after purchase...")
-                        self.driver.refresh()
-                        time.sleep(5)  # Wait for inventory to update
+                            # Refresh eCards inventory page after purchase
+                            logger.info("Refreshing eCards inventory after purchase...")
+                            self.driver.refresh()
+                            time.sleep(5)  # Wait for inventory to update
 
-                        # Check again if course is now available
-                        available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-                        if not available_course:
-                            logger.error(f"Course {product_code} still not available after purchase")
+                            # Check again if course is now available
+                            available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
+                            if not available_course:
+                                logger.error(f"Course {product_code} still not available after purchase")
+                                self.safe_navigate_back()
+                                self.safe_click_back_button()
+                                return False
+                        else:
+                            logger.info(f"Purchasing is OFF. Course {product_code} is not available in inventory and cannot be purchased automatically. Skipping order for {name}.")
+                            reason = f"Course {product_code} not available in inventory and purchasing is disabled"
+                            log_failed_order(order, reason)
                             self.safe_navigate_back()
                             self.safe_click_back_button()
                             return False
@@ -494,8 +507,11 @@ class OrderProcessor:
 
 def main():
     logger.info("Starting automation process...")
-    processor = OrderProcessor()
 
+    # Show the purchasing toggle UI before automation starts
+    show_ui()
+
+    processor = OrderProcessor()
     if not processor.initialize():
         logger.error("Failed to initialize order processor")
         return
