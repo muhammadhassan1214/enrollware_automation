@@ -345,3 +345,17 @@ def get_element_attribute(driver, by_locator, attribute: str, timeout: int = 10,
     except Exception as e:
         logger.error(f"Error getting element attribute '{attribute}': {e}")
         return default
+
+
+def wait_while_element_is_displaying(driver, by, identifier, timeout=10):
+    """Waits while the specified element is displayed."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            element = driver.find_element(by, identifier)
+            if not element.is_displayed():
+                return
+        except Exception:
+            return
+        time.sleep(0.5)
+    logger.warning(f"Timeout waiting for element {identifier} to stop displaying.")

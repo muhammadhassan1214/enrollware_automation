@@ -352,7 +352,6 @@ class OrderProcessor:
         """Process a single row with comprehensive exception handling."""
         try:
             logger.info(f"Processing row {index}...")
-            time.sleep(2)
             click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
 
             # Get order data
@@ -371,8 +370,6 @@ class OrderProcessor:
                 logger.info(f"  {i}. {quantity} {product_code} {course_name}")
 
             first_order = order_data[0]
-            course_name = first_order.get('course_name', '')
-            product_code = first_order.get('product_code', '')
             name = first_order.get('name', '')
             training_site = first_order.get('training_site', '')
 
@@ -428,7 +425,6 @@ class OrderProcessor:
                 # Check inventory availability for non-ACLS/PALS courses
                 for order in non_acls_pals_orders:
                     product_code = order.get('product_code', '')
-                    course_name = order.get('course_name', '')
                     quantity_needed = int(order.get('quantity', 1))
 
                     common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
@@ -504,6 +500,44 @@ class OrderProcessor:
                 logger.error(f"Recovery failed for row {index}: {recovery_error}")
             return False
 
+    def process_single_redcross_order(self, index: int) -> bool:
+        """Process a single Red Cross order with exception handling."""
+        try:
+            tc_product_orders_page = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
+            if self.driver.current_url != tc_product_orders_page:
+                safe_navigate_to_url(self.driver, tc_product_orders_page)
+                time.sleep(2)
+            logger.info(f"Processing Red Cross order at index {index}...")
+            click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+            time.sleep(1)
+            roaster_element = check_element_exists(self.driver, (By.XPATH, "//a[text()= 'view roster']"))
+            if not roaster_element:
+                logger.error(f"No 'view roster' link found for Red Cross order at index {index}")
+                self.safe_click_back_button()
+                return False
+            click_element_by_js(self.driver, (By.XPATH, "//a[text()= 'view roster']"))
+            time.sleep(1)
+            click_element_by_js(self.driver, (By.ID, "mainContent_cardPrint"))
+            time.sleep(1)
+            click_element_by_js(self.driver, (By.ID, "mainContent_arcSubmitBtn"))
+            time.sleep(0.5)
+            wait_while_element_is_displaying(self.driver, By.ID, "arcPleaseWaitRow", timeout=15)
+            time.sleep(1)
+            error_element = check_element_exists(self.driver, (By.XPATH, "//div[contains(@class, 'statusbarerror')]"))
+            if error_element:
+                logger.error(f"Error: {index} cannot be processed.")
+                safe_navigate_to_url(self.driver, tc_product_orders_page)
+                return False
+            safe_navigate_to_url(self.driver, tc_product_orders_page)
+            click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+            time.sleep(1)
+            mark_order_as_complete(self.driver)
+            logger.info(f"Successfully processed Red Cross order at index {index}")
+            return True
+        except Exception as e:
+            logger.error(f"Error processing Red Cross order at index {index}: {e}")
+            return False
+
 
 def main():
     logger.info("Starting automation process...")
@@ -524,34 +558,57 @@ def main():
             return
 
         logger.info("Scanning for orders to process...")
-        rows_to_process = get_indexes_to_process(processor.driver)
+        rows_to_process = get_indexes_to_process(processor.driver, "non-redcross")
+        redcross_rows = get_indexes_to_process(processor.driver, "redcross")
 
-        if not rows_to_process:
+        if not rows_to_process and not redcross_rows:
             logger.info("No orders found to process")
             return
 
         logger.info(f"Found {len(rows_to_process)} orders to process")
-        successful_rows = 0
-        failed_rows = 0
+        aha_successful_rows, aha_failed_rows = 0, 0
+        redcross_successful_rows, redcross_failed_rows = 0, 0
 
         for i, index in enumerate(rows_to_process, 1):
             try:
                 logger.info(f"[{i}/{len(rows_to_process)}] Processing order {index}")
                 if processor.process_single_row(index):
-                    successful_rows += 1
+                    aha_successful_rows += 1
                 else:
-                    failed_rows += 1
+                    aha_failed_rows += 1
             except Exception as e:
                 logger.error(f"Unexpected error processing row {index}: {e}")
-                failed_rows += 1
+                aha_failed_rows += 1
                 continue
+
+        # Process Red Cross orders
+        logger.info("Processing Red Cross orders...")
+        if redcross_rows:
+            logger.info(f"Found {len(redcross_rows)} Red Cross orders to process")
+            for i, index in enumerate(redcross_rows, 1):
+                try:
+                    logger.info(f"[{i}/{len(redcross_rows)}] Processing Red Cross order {index}")
+                    if processor.process_single_redcross_order(index):
+                        redcross_successful_rows += 1
+                    else:
+                        redcross_failed_rows += 1
+                except Exception as e:
+                    logger.error(f"Unexpected error processing Red Cross row {index}: {e}")
+                    redcross_failed_rows += 1
+                    continue
+        else:
+            logger.info("No Red Cross orders found to process")
 
         print(f"\n{'='*50}")
         print(f"PROCESSING SUMMARY")
         print(f"{'='*50}")
-        print(f"Total orders processed: {len(rows_to_process)}")
-        print(f"Successful: {successful_rows}")
-        print(f"Failed: {failed_rows}")
+        print(f"AHA orders processed: {len(rows_to_process)}")
+        print(f"Successful: {aha_successful_rows}")
+        print(f"Failed: {aha_failed_rows}")
+        print(f"{'-'*50}")
+        print(f"Red Cross orders processed: {len(redcross_rows)}")
+        print(f"Successful: {redcross_successful_rows}")
+        print(f"Failed: {redcross_failed_rows}")
         print(f"{'='*50}")
 
     except Exception as e:

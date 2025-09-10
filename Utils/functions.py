@@ -180,7 +180,7 @@ def login_to_ecards(driver, max_retries: int = 3) -> bool:
     return False
 
 
-def get_indexes_to_process(driver) -> List[int]:
+def get_indexes_to_process(driver, condition) -> List[int]:
     """Get valid row indexes to process with comprehensive error handling."""
     valid_indexes = []
     
@@ -202,17 +202,30 @@ def get_indexes_to_process(driver) -> List[int]:
                 td4_element = row.find_elements(By.XPATH, ".//td[4]")
                 td4 = td4_element[0].text.strip().lower() if td4_element else ""
 
-                # Exclusion conditions
-                if "redcross" in td2 or "red cross" in td2:
-                    continue
+                if condition == "redcross":
+                    # Inclusion conditions for Red Cross
+                    if "redcross" not in td2 and "red cross" not in td2:
+                        continue
 
-                if "complete" in td4 or "cancelled" in td4:
-                    continue
+                    if "complete" in td4 or "cancelled" in td4:
+                        continue
+
+                elif condition == "non-redcross":
+                    # Exclusion conditions
+                    if "redcross" in td2 or "red cross" in td2:
+                        continue
+
+                    if "complete" in td4 or "cancelled" in td4:
+                        continue
+
+                else:
+                    logger.error(f"Unknown condition: {condition}")
+                    return valid_indexes
 
                 # If not excluded, keep index
                 valid_indexes.append(i)
 
-            except Exception as e:
+            except:
                 continue
 
         return valid_indexes
@@ -300,8 +313,6 @@ def mark_order_as_complete(driver, max_retries: int = 3) -> bool:
                 logger.error("Failed to select 'Complete' status")
                 continue
 
-            time.sleep(1)
-
             # Click status update button
             if not click_element_by_js(driver, (By.ID, "mainContent_statusUpdateBtn")):
                 logger.error("Failed to click status update button")
@@ -314,14 +325,14 @@ def mark_order_as_complete(driver, max_retries: int = 3) -> bool:
                 logger.error("Failed to click email button")
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click send button
             if not click_element_by_js(driver, (By.ID, "mainContent_sendButton")):
                 logger.error("Failed to click send button")
                 continue
 
-            time.sleep(2)
+            time.sleep(1)
 
             # Click back button
             if not click_element_by_js(driver, (By.ID, "mainContent_backButton")):
