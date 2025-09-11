@@ -1,5 +1,5 @@
 from Utils.functions import *
-from ui_purchasing_toggle import purchasing_enabled, show_ui
+from ui_purchasing_toggle import purchasing_enabled, show_ui, STATE_FILE
 import logging
 from typing import List, Dict, Any
 import sys
@@ -542,8 +542,9 @@ class OrderProcessor:
 def main():
     logger.info("Starting automation process...")
 
-    # Show the purchasing toggle UI before automation starts
-    show_ui()
+    # Only show the purchasing toggle UI if the state file does not exist (first run)
+    if not os.path.exists(STATE_FILE):
+        show_ui()
 
     processor = OrderProcessor()
     if not processor.initialize():
