@@ -503,18 +503,29 @@ class OrderProcessor:
     def process_single_redcross_order(self, index: int) -> bool:
         """Process a single Red Cross order with exception handling."""
         try:
+
             tc_product_orders_page = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
             if self.driver.current_url != tc_product_orders_page:
                 safe_navigate_to_url(self.driver, tc_product_orders_page)
                 time.sleep(2)
+
             logger.info(f"Processing Red Cross order at index {index}...")
             click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
             time.sleep(1)
+
+            training_site_xpath = create_xpath('Training Site')
+            training_site_txt = get_element_text(self.driver, (By.XPATH, training_site_xpath), default="Unknown").strip()
+            if "wayne halfway" in training_site_txt.lower():
+                logger.info(f"Skipping Red Cross order at index {index} due to Wayne Halfway training site")
+                mark_order_as_complete(self.driver)
+                return True
+
             roaster_element = check_element_exists(self.driver, (By.XPATH, "//a[text()= 'view roster']"))
             if not roaster_element:
                 logger.error(f"No 'view roster' link found for Red Cross order at index {index}")
                 self.safe_click_back_button()
                 return False
+
             click_element_by_js(self.driver, (By.XPATH, "//a[text()= 'view roster']"))
             time.sleep(1)
             click_element_by_js(self.driver, (By.ID, "mainContent_cardPrint"))
@@ -523,11 +534,19 @@ class OrderProcessor:
             time.sleep(0.5)
             wait_while_element_is_displaying(self.driver, By.ID, "arcPleaseWaitRow", timeout=15)
             time.sleep(1)
+
             error_element = check_element_exists(self.driver, (By.XPATH, "//div[contains(@class, 'statusbarerror')]"))
             if error_element:
+                error_txt = get_element_text(self.driver, (By.XPATH, "//div[contains(@class, 'statusbarerror')]"))
                 logger.error(f"Error: {index} cannot be processed.")
                 safe_navigate_to_url(self.driver, tc_product_orders_page)
-                return False
+                click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+                time.sleep(1)
+                input_element(self.driver, (By.ID, "mainContent_addEntryTxt"), error_txt)
+                click_element_by_js(self.driver, (By.ID, "mainContent_entrySubBtn"))
+                self.safe_click_back_button()
+                return True
+
             safe_navigate_to_url(self.driver, tc_product_orders_page)
             click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
             time.sleep(1)
