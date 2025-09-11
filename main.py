@@ -542,10 +542,6 @@ class OrderProcessor:
 def main():
     logger.info("Starting automation process...")
 
-    # Only show the purchasing toggle UI if the state file does not exist (first run)
-    if not os.path.exists(STATE_FILE):
-        show_ui()
-
     processor = OrderProcessor()
     if not processor.initialize():
         logger.error("Failed to initialize order processor")
@@ -651,6 +647,8 @@ def run_every_15_minutes():
 
 
 if __name__ == "__main__":
+    # Show the purchasing toggle UI only on the very first run of this process
+    show_ui()
     try:
         run_every_15_minutes()
     except KeyboardInterrupt:
