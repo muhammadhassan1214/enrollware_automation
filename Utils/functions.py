@@ -1095,6 +1095,17 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
     return False
 
 
+def add_error_log(driver, error_txt: str):
+    """Add error log to error_logs.txt with timestamp."""
+    try:
+        comment_already_exists = check_element_exists(driver,
+                                                      (By.XPATH, f'''//td[contains(text(), "{error_txt}")]'''))
+        if not comment_already_exists:
+            input_element(driver, (By.ID, "mainContent_addEntryTxt"), error_txt)
+            click_element_by_js(driver, (By.ID, "mainContent_entrySubBtn"))
+    except Exception as e:
+        logger.error(f"Failed to write to error log: {e}")
+
 
 # driver = get_undetected_driver()
 # product_code = "20-3016"

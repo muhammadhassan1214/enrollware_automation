@@ -524,10 +524,8 @@ class OrderProcessor:
             if not roaster_element:
                 logger.error(f"No 'view roster' link found for Red Cross order at index {index}")
                 err_txt = "No 'view roster' link found"
-                comment_already_exists = check_element_exists(self.driver, (By.XPATH, f'''//td[contains(text(), "{err_txt}")]'''))
-                if not comment_already_exists:
-                    input_element(self.driver, (By.ID, "mainContent_addEntryTxt"), err_txt)
-                    click_element_by_js(self.driver, (By.ID, "mainContent_entrySubBtn"))
+                # add error log to order
+                add_error_log(self.driver, err_txt)
                 self.safe_click_back_button()
                 return True
 
@@ -547,8 +545,8 @@ class OrderProcessor:
                 safe_navigate_to_url(self.driver, tc_product_orders_page)
                 click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
                 time.sleep(1)
-                input_element(self.driver, (By.ID, "mainContent_addEntryTxt"), error_txt)
-                click_element_by_js(self.driver, (By.ID, "mainContent_entrySubBtn"))
+                # add error log to order
+                add_error_log(self.driver, error_txt)
                 self.safe_click_back_button()
                 return True
 
