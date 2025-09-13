@@ -503,20 +503,20 @@ class OrderProcessor:
     def process_single_redcross_order(self, index: int) -> bool:
         """Process a single Red Cross order with exception handling."""
         try:
-
+            product_locator = (By.XPATH, f"//tbody/tr[{index}]/td[7]/a")
             tc_product_orders_page = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
             if self.driver.current_url != tc_product_orders_page:
                 safe_navigate_to_url(self.driver, tc_product_orders_page)
                 time.sleep(2)
 
             logger.info(f"Processing Red Cross order at index {index}...")
-            click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+            click_element_by_js(self.driver, product_locator)
             time.sleep(1)
 
-            training_site_xpath = create_xpath('Training Site')
-            training_site_txt = get_element_text(self.driver, (By.XPATH, training_site_xpath), default="Unknown").strip()
+            training_site_locator = (By.XPATH, create_xpath('Training Site'))
+            training_site_txt = get_element_text(self.driver, training_site_locator, default="Unknown").strip()
             if "wayne halfway" in training_site_txt.lower():
-                logger.info(f"Skipping Red Cross order at index {index} due to Wayne Halfway training site")
+                logger.info(f"Marking order as completed without processing due to `Wayne Halfway` training site")
                 mark_order_as_complete(self.driver)
                 return True
 
@@ -538,12 +538,13 @@ class OrderProcessor:
             wait_while_element_is_displaying(self.driver, By.ID, "arcPleaseWaitRow", timeout=15)
             time.sleep(1)
 
-            error_element = check_element_exists(self.driver, (By.XPATH, "//div[contains(@class, 'statusbarerror')]"))
+            error_element_locator = (By.XPATH, "//div[contains(@class, 'statusbarerror')]")
+            error_element = check_element_exists(self.driver, error_element_locator)
             if error_element:
-                error_txt = get_element_text(self.driver, (By.XPATH, "//div[contains(@class, 'statusbarerror')]"))
-                logger.error(f"Error: {index} cannot be processed.")
+                error_txt = get_element_text(self.driver, error_element_locator)
+                logger.error(f"Error: {error_txt}\nOrder cannot be processed.")
                 safe_navigate_to_url(self.driver, tc_product_orders_page)
-                click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+                click_element_by_js(self.driver, product_locator)
                 time.sleep(1)
                 # add error log to order
                 add_error_log(self.driver, error_txt)
@@ -551,7 +552,7 @@ class OrderProcessor:
                 return True
 
             safe_navigate_to_url(self.driver, tc_product_orders_page)
-            click_element_by_js(self.driver, (By.XPATH, f"//tbody/tr[{index}]/td[7]/a"))
+            click_element_by_js(self.driver, product_locator)
             time.sleep(1)
             mark_order_as_complete(self.driver)
             logger.info(f"Successfully processed Red Cross order at index {index}")
