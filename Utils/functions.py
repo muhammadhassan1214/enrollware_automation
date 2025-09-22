@@ -1014,7 +1014,9 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
             time.sleep(1)
 
             # Select instructor by name
-            if name[0].isupper() and name[1].isupper():
+            first_name = name.split(" ")[0] if " " in name else name
+            last_name = name.split(" ")[1] if " " in name else ""
+            if first_name.isupper() and last_name.isupper():
                 instructor_xpath = f"(//label[contains(text(), '{name}')])[1]"
             else:
                 instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
