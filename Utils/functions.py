@@ -450,7 +450,8 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
             time.sleep(1)
 
             # Select instructor by name
-            instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
+            instructor_name = format_name(name)
+            instructor_xpath = f"(//label[contains(text(), '{instructor_name}')])[1]"
             if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
                 continue
 
@@ -1013,13 +1014,8 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
 
             time.sleep(1)
 
-            # Select instructor by name
-            first_name = name.split(" ")[0] if " " in name else name
-            last_name = name.split(" ")[1] if " " in name else ""
-            if first_name and last_name and first_name[0].isupper() and last_name[0].isupper():
-                instructor_xpath = f"(//label[contains(text(), '{name}')])[1]"
-            else:
-                instructor_xpath = f"(//label[contains(text(), '{name.title()}')])[1]"
+            instructor_name = format_name(name)
+            instructor_xpath = f"(//label[contains(text(), '{instructor_name}')])[1]"
             if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
                 logger.error(f"Failed to select instructor: {name}")
                 continue
@@ -1112,8 +1108,27 @@ def add_error_log(driver, error_txt: str):
         logger.error(f"Failed to write to error log: {e}")
 
 
-# driver = get_undetected_driver()
-# product_code = "20-3016"
-# quantity_to_order = 1
-# name = "Nathan Shell"
-# make_purchase_on_shop_cpr(driver, product_code, quantity_to_order, name)
+import re
+
+
+def format_name(name: str) -> str:
+    """Format a full name with smart title casing (handles Mc, Mac, O')."""
+
+    def smart_cap(word: str) -> str:
+        w = word.lower().capitalize()
+
+        # Handle O' prefix (e.g., O'Neil, O'Connor)
+        if re.match(r"^o'[a-z]", w.lower()):
+            return "O'" + w[2:].capitalize()
+
+        # Handle Mc prefix (e.g., McKinney, McDonald)
+        if w.lower().startswith("mc") and len(w) > 2:
+            return "Mc" + w[2].upper() + w[3:]
+
+        # Handle Mac prefix (e.g., MacArthur, MacGregor)
+        if w.lower().startswith("mac") and len(w) > 3:
+            return "Mac" + w[3].upper() + w[4:]
+
+        return w
+
+    return " ".join(smart_cap(word) for word in name.split())
