@@ -1,5 +1,5 @@
 from Utils.functions import *
-from ui_purchasing_toggle import purchasing_enabled, show_ui, STATE_FILE
+from ui_purchasing_toggle import purchasing_enabled, show_ui
 import logging
 from typing import List, Dict, Any
 import sys
@@ -71,6 +71,23 @@ def log_failed_order(order: Dict[str, Any], reason: str):
         order_row = dict(order)
         order_row["failure_reason"] = reason
         writer.writerow(order_row)
+
+
+def is_acls_pals_course(course_name: str) -> bool:
+    """Check if course is ACLS or PALS based on course name."""
+    if not course_name:
+        return False
+
+    course_upper = course_name.upper()
+    return 'ACLS' in course_upper or 'PALS' in course_upper
+
+
+def get_training_site_name_for_order(training_site: str) -> str:
+    """Get training site name for order assignment."""
+    code = training_site.split(' ')[0].strip() if ' ' in training_site else training_site.strip()
+    training_site_name = get_training_site_name(code)
+    return training_site_name if training_site_name else "Unknown Training Site"
+
 
 class OrderProcessor:
     def __init__(self):
@@ -181,14 +198,6 @@ class OrderProcessor:
         logger.error("Failed to setup eCards session")
         return False
 
-    def is_acls_pals_course(self, course_name: str) -> bool:
-        """Check if course is ACLS or PALS based on course name."""
-        if not course_name:
-            return False
-
-        course_upper = course_name.upper()
-        return 'ACLS' in course_upper or 'PALS' in course_upper
-
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
                                available_qyt_selector: str) -> bool:
         """Process order assignment with proper exception handling and individual order logic."""
@@ -203,7 +212,7 @@ class OrderProcessor:
 
             try:
                 # Priority check: ACLS/PALS courses go to Admin Instructor
-                if self.is_acls_pals_course(course_name):
+                if is_acls_pals_course(course_name):
                     logger.info(f"ACLS/PALS course {product_code} ({course_name}) assigned to Admin Instructor")
                     if not assign_to_admin_instructor(self.driver, name, str(quantity), product_code):
                         reason = f"Failed to assign ACLS/PALS course {product_code} to Admin Instructor"
@@ -217,7 +226,7 @@ class OrderProcessor:
                     if training_site.startswith("TS"):
                         logger.info(f"Individual course {product_code} assigned to training site due to TS prefix")
                         if not self.process_single_order(order, available_qyt_selector,
-                                                        lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, self.get_training_site_name_for_order(training_site))):
+                                                        lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, get_training_site_name_for_order(training_site))):
                             reason = f"Failed to assign individual course {product_code} to training site"
                             logger.error(reason)
                             log_failed_order(order, reason)
@@ -233,7 +242,7 @@ class OrderProcessor:
                     # Bundle courses: prefer training site assignment
                     logger.info(f"Bundle course {product_code} assigned to training site")
                     if not self.process_single_order(order, available_qyt_selector,
-                                                    lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, self.get_training_site_name_for_order(training_site))):
+                                                    lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, get_training_site_name_for_order(training_site))):
                         reason = f"Failed to assign bundle course {product_code} to training site"
                         logger.error(reason)
                         log_failed_order(order, reason)
@@ -245,12 +254,6 @@ class OrderProcessor:
                 all_success = False
 
         return all_success
-
-    def get_training_site_name_for_order(self, training_site: str) -> str:
-        """Get training site name for order assignment."""
-        code = training_site.split(' ')[0].strip() if ' ' in training_site else training_site.strip()
-        training_site_name = get_training_site_name(code)
-        return training_site_name if training_site_name else "Unknown Training Site"
 
     def process_admin_instructor_assignment(self, order_data: List[Dict[str, Any]]) -> bool:
         """Process Admin Instructor assignment for ACLS/PALS courses with exception handling."""
@@ -376,9 +379,9 @@ class OrderProcessor:
             logger.info(f"Processing for: {name} - Training Site: {training_site}")
 
             # Check if any order contains ACLS/PALS
-            has_acls_pals = any(self.is_acls_pals_course(order.get('course_name', '')) for order in order_data)
+            has_acls_pals = any(is_acls_pals_course(order.get('course_name', '')) for order in order_data)
             if has_acls_pals:
-                acls_pals_courses = [order.get('course_name', '') for order in order_data if self.is_acls_pals_course(order.get('course_name', ''))]
+                acls_pals_courses = [order.get('course_name', '') for order in order_data if is_acls_pals_course(order.get('course_name', ''))]
                 logger.info(f"Detected ACLS/PALS courses in order: {acls_pals_courses}")
 
             # Check if any course should be skipped
@@ -398,7 +401,7 @@ class OrderProcessor:
                 return False
 
             # Check if all orders are ACLS/PALS (bypass inventory checks completely)
-            all_acls_pals = all(self.is_acls_pals_course(order.get('course_name', '')) for order in order_data)
+            all_acls_pals = all(is_acls_pals_course(order.get('course_name', '')) for order in order_data)
 
             if all_acls_pals:
                 logger.info(f"All courses are ACLS/PALS - bypassing inventory checks completely")
@@ -417,7 +420,7 @@ class OrderProcessor:
                     return False
 
             # For mixed orders or non-ACLS/PALS courses, proceed with inventory checks for non-ACLS/PALS items
-            non_acls_pals_orders = [order for order in order_data if not self.is_acls_pals_course(order.get('course_name', ''))]
+            non_acls_pals_orders = [order for order in order_data if not is_acls_pals_course(order.get('course_name', ''))]
 
             if non_acls_pals_orders:
                 logger.info(f"Checking inventory for {len(non_acls_pals_orders)} non-ACLS/PALS courses")
@@ -619,17 +622,13 @@ def main():
         else:
             logger.info("No Red Cross orders found to process")
 
-        print(f"\n{'='*50}")
-        print(f"PROCESSING SUMMARY")
-        print(f"{'='*50}")
+        print(f"\n{'='*50}\nPROCESSING SUMMARY\n{'='*50}")
         print(f"AHA orders processed: {len(rows_to_process)}")
         print(f"Successful: {aha_successful_rows}")
-        print(f"Failed: {aha_failed_rows}")
-        print(f"{'-'*50}")
+        print(f"Failed: {aha_failed_rows}\n{'-'*50}")
         print(f"Red Cross orders processed: {len(redcross_rows)}")
         print(f"Successful: {redcross_successful_rows}")
-        print(f"Failed: {redcross_failed_rows}")
-        print(f"{'='*50}")
+        print(f"Failed: {redcross_failed_rows}\n{'='*50}")
 
     except Exception as e:
         logger.error(f"Critical error in main process: {e}")
