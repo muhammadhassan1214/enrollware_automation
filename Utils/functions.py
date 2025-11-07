@@ -583,7 +583,7 @@ def get_training_site_name(code: str) -> Optional[str]:
         logger.warning("Empty code provided for training site lookup")
         return None
 
-    csv_path = os.path.join('Utils', 'training_sites.csv')
+    csv_path = os.path.join('data', 'training_sites.csv')
 
     try:
         if not os.path.exists(csv_path):

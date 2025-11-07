@@ -10,7 +10,7 @@ class AvailableCourses:
     def __init__(self):
         self.available_courses = {}
         self.course_categories = {}  # SKU -> True (individual) / False (bundle)
-        self.csv_path = os.path.join('Utils', 'courses.csv')
+        self.csv_path = os.path.join('data', 'courses.csv')
         self._load_courses_from_csv()
 
     def _load_courses_from_csv(self) -> bool:

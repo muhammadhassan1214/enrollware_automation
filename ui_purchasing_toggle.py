@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import ttk
 import os
 
 STATE_FILE = "purchasing_toggle_state.txt"
