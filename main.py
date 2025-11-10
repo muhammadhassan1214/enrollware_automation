@@ -432,14 +432,21 @@ class OrderProcessor:
 
                     common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
                     available_course_selector = f"{common_selector}[@role='button']"
-
+                    available_quantity_selector = f"{common_selector}[1]"
+                    available_quantity_element = check_element_exists(self.driver, available_quantity_selector)
+                    available_quantity = 0
+                    if available_quantity_element:
+                        available_quantity_text = get_element_text(self.driver, (By.XPATH, available_quantity_selector))
+                        available_quantity = int(available_quantity_text) if available_quantity_text.isdigit() else 0
                     available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-                    if not available_course:
-                        logger.warning(f"Course {product_code} not available in eCards inventory, purchasing...")
+                    if not available_course or available_quantity < quantity_needed:
+                        logger.warning(f"Course {product_code} not available in eCards inventory or insufficient quantity (Needed: {quantity_needed}, Available: {available_quantity})")
 
                         # Check if purchasing is enabled before attempting purchase
                         if purchasing_enabled():
                             # Purchase the exact quantity needed (no retry logic)
+                            quantity_needed = max(0, quantity_needed - available_quantity)
+                            logger.info(f"Purchasing {quantity_needed} eCards for {product_code}")
                             purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name)
                             if not purchase_success:
                                 logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
