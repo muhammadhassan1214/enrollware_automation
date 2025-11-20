@@ -1,11 +1,38 @@
 from Utils.functions import *
 from ui_purchasing_toggle import purchasing_enabled, show_ui
+from discord_notification import DiscordNotifier
 import logging
 from typing import List, Dict, Any
 import sys
 import os
 from datetime import datetime
 import csv
+
+last_message = ""
+quantity_required = []
+
+
+def generate_stock_summary(order_data_list):
+    if not order_data_list:
+        pass
+
+    sku_totals = {}
+
+    for item in order_data_list:
+        sku = item["sku"]
+        qty = item["qty"]
+
+        if sku in sku_totals:
+            sku_totals[sku] += qty
+        else:
+            sku_totals[sku] = qty
+
+    message = ""
+
+    for sku, total_qty in sku_totals.items():
+        message += f"{sku} - {total_qty}\n"
+
+    return message
 
 # Configure logging with simplified output
 def setup_logging():
@@ -303,8 +330,9 @@ class OrderProcessor:
             return False
 
     def process_single_order(self, order: Dict[str, Any], available_qyt_selector: str,
-                           assignment_func) -> bool:
+                             assignment_func) -> bool:
         """Process a single order with exception handling."""
+        global quantity_required
         try:
             name = order.get('name', '')
             product_code = order.get('product_code', '')
@@ -319,6 +347,7 @@ class OrderProcessor:
             # Purchase additional if needed
             if available_qyt < quantity_int:
                 quantity_to_order = quantity_int - available_qyt
+                quantity_required.append({"sku": product_code, "qty": quantity_to_order})
                 if purchasing_enabled():
                     logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
                     purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
@@ -659,6 +688,16 @@ def run_every_15_minutes():
 
         try:
             main()  # Existing processing logic
+            message = generate_stock_summary(quantity_required)
+            global last_message
+            if message != last_message:
+                notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
+                if notifier.send_notification(message):
+                    logger.info("Discord notification sent successfully")
+                    last_message = message
+                else:
+                    logger.error("Failed to send Discord notification")
+
         except Exception as e:
             logger.error(f"Unhandled error in scheduled run #{run_count}: {e}")
 

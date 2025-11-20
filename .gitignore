@@ -4,3 +4,4 @@ Utils/chrome-dir
 __pycache__
 .env
 logs
+failed_orders.csv
