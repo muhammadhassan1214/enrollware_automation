@@ -246,7 +246,7 @@ def get_undetected_driver(headless: bool = False, max_retries: int = 3) -> Optio
 def check_element_exists(driver, by_locator, timeout: int = 3) -> bool:
     """Check if element exists with proper exception handling."""
     try:
-        WebDriverWait(driver, timeout).until(EC.presence_of_element_located(by_locator))
+        WebDriverWait(driver, timeout).until(EC.visibility_of_element_located(by_locator))
         return True
     except TimeoutException:
         return False
