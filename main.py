@@ -1,12 +1,27 @@
-from Utils.functions import *
-from ui_purchasing_toggle import purchasing_enabled, show_ui
-from discord_notification import DiscordNotifier
-import logging
-from typing import List, Dict, Any
-import sys
 import os
-from datetime import datetime
+import sys
 import csv
+import time
+import logging
+
+from datetime import datetime
+from typing import List, Dict, Any
+from courses import AvailableCourses
+from selenium.webdriver.common.by import By
+from discord_notification import DiscordNotifier
+from ui_purchasing_toggle import purchasing_enabled, show_ui
+from Utils.utils import get_undetected_driver, wait_while_element_is_displaying
+from Utils.functions import (
+    go_back, create_xpath,
+    add_error_log, get_order_data,
+    login_to_ecards, get_element_text,
+    click_element_by_js, assign_to_instructor,
+    safe_navigate_to_url, check_element_exists,
+    get_indexes_to_process, mark_order_as_complete,
+    get_training_site_name, make_purchase_on_shop_cpr,
+    assign_to_training_center, assign_to_admin_instructor,
+    login_to_enrollware_and_navigate_to_tc_product_orders,
+)
 
 last_message = ""
 quantity_required = []
@@ -253,7 +268,7 @@ class OrderProcessor:
                     if training_site.startswith("TS"):
                         logger.info(f"Individual course {product_code} assigned to training site due to TS prefix")
                         if not self.process_single_order(order, available_qyt_selector,
-                                                        lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, get_training_site_name_for_order(training_site))):
+                                                        lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, get_training_site_name_for_order(training_site))):
                             reason = f"Failed to assign individual course {product_code} to training site"
                             logger.error(reason)
                             log_failed_order(order, reason)
@@ -269,7 +284,7 @@ class OrderProcessor:
                     # Bundle courses: prefer training site assignment
                     logger.info(f"Bundle course {product_code} assigned to training site")
                     if not self.process_single_order(order, available_qyt_selector,
-                                                    lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, get_training_site_name_for_order(training_site))):
+                                                    lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, get_training_site_name_for_order(training_site))):
                         reason = f"Failed to assign bundle course {product_code} to training site"
                         logger.error(reason)
                         log_failed_order(order, reason)
@@ -322,7 +337,7 @@ class OrderProcessor:
 
             for order in order_data:
                 if not self.process_single_order(order, available_qyt_selector,
-                                                lambda driver, name, qty, code: assign_to_training_center(driver, qty, code, training_site_name)):
+                                                lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, training_site_name)):
                     return False
             return True
         except Exception as e:

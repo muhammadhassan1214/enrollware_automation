@@ -1,11 +1,20 @@
-from selenium.webdriver.common.by import By
-from Utils.utils import *
+import re
 import os
+import csv
+import time
+import logging
+
 from dotenv import load_dotenv
 from courses import AvailableCourses
-import csv
+from selenium.webdriver.common.by import By
 from typing import Optional, Tuple, List, Dict, Any
-import logging
+from Utils.utils import (
+    input_element, select_by_text,
+    move_to_element, get_element_text,
+    click_element_by_js, safe_navigate_to_url,
+    check_element_exists,
+)
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -47,7 +56,7 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
 
     for attempt in range(max_retries):
         try:
-            if not safe_navigate_to_url(driver, "https://enrollware.com/admin"):
+            if not safe_navigate_to_url(driver, "https://www.enrollware.com/admin/login.aspx?"):
                 continue
 
             time.sleep(5)
@@ -95,89 +104,77 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
     return False
 
 
-def navigate_to_tc_product_orders(driver, max_retries: int = 3) -> bool:
+def navigate_to_tc_product_orders(driver) -> bool | None:
     """Navigate to TC Product Orders with error handling."""
-    for attempt in range(max_retries):
-        try:
-            url = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
-            if safe_navigate_to_url(driver, url):
-                logger.info("Successfully navigated to TC Product Orders")
-                return True
-        except Exception as e:
-            logger.error(f"Navigation attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-                continue
-
-    logger.error("Failed to navigate to TC Product Orders")
-    return False
+    try:
+        url = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
+        if safe_navigate_to_url(driver, url):
+            logger.info("Successfully navigated to TC Product Orders")
+            return True
+    except Exception as e:
+        logger.error(f"Navigation failed: {e}")
+        return False
 
 
-def login_to_ecards(driver, max_retries: int = 3) -> bool:
+def login_to_ecards(driver, username=os.getenv("ATLAS_USERNAME"), password=os.getenv("ATLAS_PASSWORD")) -> bool:
     """Login to eCards with comprehensive error handling and retry logic."""
     if not validate_environment_variables():
         return False
+    try:
+        # Check if already logged in
+        if "https://ecards.heart.org/inventory" == driver.current_url:
+            return True
 
-    for attempt in range(max_retries):
-        try:
-            # Check if already logged in
+        # Check for sign-in button
+        sign_in_button = check_element_exists(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]"), timeout=3)
+
+
+        if sign_in_button:
+            if not click_element_by_js(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]")):
+                return False
+
+            time.sleep(3)
+
+            # Check if redirected to inventory
+            if "inventory" in driver.current_url:
+                return True
+
+        # Proceed with login if email field exists
+        if check_element_exists(driver, (By.ID, "Email"), timeout=5):
+            if not input_element(driver, (By.ID, "Email"), username):
+                return False
+
+            time.sleep(1)
+
+            if not input_element(driver, (By.ID, "Password"), password):
+                return False
+
+            time.sleep(1)
+
+            # Try to click remember me checkbox (optional)
+            # remember_me_xpath = "//input[@id= 'RememberMe']/following-sibling::label"
+            # if check_element_exists(driver, (By.XPATH, remember_me_xpath), timeout=3):
+            #     click_element_by_js(driver, (By.XPATH, remember_me_xpath))
+            #
+            # time.sleep(1)
+
+            # Click sign-in button
+            if not click_element_by_js(driver, (By.ID, "btnSignIn")):
+                return False
+
+            time.sleep(5)
+
+            # Verify login success
             if "https://ecards.heart.org/inventory" == driver.current_url:
                 return True
-
-            # Check for sign-in button
-            sign_in_button = check_element_exists(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]"), timeout=5)
-            email_field = check_element_exists(driver, (By.ID, "Email"), timeout=5)
-
-            if sign_in_button and email_field:
-                if not click_element_by_js(driver, (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]")):
-                    continue
-
-                time.sleep(3)
-
-                # Check if redirected to inventory
-                if "inventory" in driver.current_url:
-                    return True
-
-            # Proceed with login if email field exists
-            if check_element_exists(driver, (By.ID, "Email"), timeout=5):
-                if not input_element(driver, (By.ID, "Email"), os.getenv("ATLAS_USERNAME")):
-                    continue
-
-                time.sleep(2)
-
-                if not input_element(driver, (By.ID, "Password"), os.getenv("ATLAS_PASSWORD")):
-                    continue
-
-                time.sleep(2)
-
-                # Try to click remember me checkbox (optional)
-                remember_me_xpath = "//input[@id= 'RememberMe']/following-sibling::label"
-                if check_element_exists(driver, (By.XPATH, remember_me_xpath), timeout=3):
-                    click_element_by_js(driver, (By.XPATH, remember_me_xpath))
-
-                time.sleep(2)
-
-                # Click sign-in button
-                if not click_element_by_js(driver, (By.ID, "btnSignIn")):
-                    continue
-
-                time.sleep(5)
-
-                # Verify login success
-                if "https://ecards.heart.org/inventory" == driver.current_url:
-                    return True
-                else:
-                    continue
             else:
-                return True
+                return False
+        else:
+            return True
 
-        except:
-            if attempt < max_retries - 1:
-                time.sleep(3)
-                continue
-
-    logger.error("Failed to login to Atlas")
-    return False
+    except:
+        logger.error("Failed to login to Atlas")
+        return False
 
 
 def get_indexes_to_process(driver, condition) -> List[int]:
@@ -497,7 +494,7 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str, ma
     return False
 
 
-def assign_to_training_center(driver, quantity: str, product_code: str, training_site: str, max_retries: int = 3) -> bool:
+def assign_to_training_center(driver, name: str, quantity: str, product_code: str, training_site: str, max_retries: int = 3) -> bool:
     """Assign to training center with comprehensive error handling."""
     if not available_courses:
         logger.error("Available courses not initialized")
@@ -565,6 +562,87 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
                 continue
 
+            logout_from_aha(driver)
+            safe_navigate_to_url(driver, "https://ecards.heart.org/inventory")
+            login_to_ecards(driver, username=os.getenv("AHA_NEW_USERNAME"), password=os.getenv("AHA_NEW_PASSWORD"))
+
+            if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
+                continue
+
+            # Click 'Assign to Instructor'
+            if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Instructor')]")):
+                continue
+
+            if not select_by_text(driver, (By.ID, "RoleId"), 'TS Admin'):
+                logger.error("Failed to select TS Admin")
+                continue
+
+            # Select course
+            course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
+            if not course_name_on_ecard:
+                logger.error(f"Course name not found for product code: {product_code}")
+                continue
+
+            if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
+                    continue
+
+            # Select training center
+            if not select_by_text(driver, (By.ID, "ddlTC"), 'Shell CPR, LLC.'):
+                continue
+
+            time.sleep(1)
+
+            # Select training site
+            if not select_by_text(driver, (By.ID, "ddlSite"), training_site):
+                continue
+
+            time.sleep(1)
+
+            # Click assign to dropdown
+            if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
+                continue
+
+            time.sleep(1)
+
+            # Select instructor by name
+            instructor_name = format_name(name)
+            instructor_xpath = f"(//label[contains(text(), '{instructor_name}')])[1]"
+            if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
+                continue
+
+            time.sleep(1)
+
+            # Click move next
+            if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
+                continue
+
+            time.sleep(1)
+
+            # Input quantity
+            if not input_element(driver, (By.ID, "qty1"), str(quantity)):
+                continue
+
+            time.sleep(1)
+
+            # Click confirm
+            if not click_element_by_js(driver, (By.ID, "btnConfirm")):
+                continue
+
+            time.sleep(1)
+
+            # Click complete
+            if not click_element_by_js(driver, (By.ID, "btnComplete")):
+                continue
+
+            time.sleep(1)
+
+            # Go to inventory
+            if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
+                continue
+
+            logout_from_aha(driver)
+            login_to_ecards(driver, username=os.getenv("ATLAS_USERNAME"), password=os.getenv("ATLAS_PASSWORD"))
+
             logger.info(f"Successfully assigned {quantity} of {product_code} ({'Individual' if available_courses.is_individual_course(product_code) else 'Bundle'}) to training site {training_site}")
             return True
 
@@ -575,6 +653,21 @@ def assign_to_training_center(driver, quantity: str, product_code: str, training
 
     logger.error("Failed to assign to training center after all attempts")
     return False
+
+
+def logout_from_aha(driver):
+    try:
+        click_element_by_js(driver, (By.XPATH, "//img[@id= 'profileImg']/parent::button"))
+        click_element_by_js(driver, (By.ID, "logoutId"))
+        time.sleep(1)
+        header_username = (By.XPATH, "//span[contains(@class, 'Header_userName')]/ancestor::button")
+        ele = check_element_exists(driver, header_username)
+        if not ele:
+            return
+        move_to_element(driver, header_username)
+        click_element_by_js(driver, (By.XPATH, "//a[text()= 'Logout']"))
+    except Exception as e:
+        logger.error(f"Error during logout from AHA: {e}")
 
 
 def get_training_site_name(code: str) -> Optional[str]:
@@ -841,15 +934,20 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
                 logger.error("Failed to click Add to Cart for bundle")
                 return False
 
-        # Input quantity
-        if not input_element(driver, (By.XPATH, "//input[@id= 'qty']"), str(quantity_to_order)):
-            logger.error("Failed to input quantity")
-            return False
 
         time.sleep(1)
 
+        if not click_element_by_js(driver, (By.XPATH, "//a[contains(@id, 'title-quick-view')]")):
+            logger.error("Failed to add to cart")
+            return False
+
+        # Input quantity
+        if not input_element(driver, (By.CSS_SELECTOR, "input[id=qty]"), str(quantity_to_order)):
+            logger.error("Failed to input quantity")
+            return False
+
         # Add to cart
-        if not click_element_by_js(driver, (By.XPATH, "//button[@id= 'product-addtocart-button']")):
+        if not click_element_by_js(driver, (By.CSS_SELECTOR, "button[id=product-addtocart-button]")):
             logger.error("Failed to add to cart")
             return False
 
@@ -1108,13 +1206,16 @@ def add_error_log(driver, error_txt: str):
         logger.error(f"Failed to write to error log: {e}")
 
 
-import re
-
-
 def format_name(name: str) -> str:
-    """Format a full name with smart title casing (handles Mc, Mac, O')."""
+    """Format a full name with smart title casing (handles Mc, Mac, O', and hyphens)."""
 
     def smart_cap(word: str) -> str:
+        # NEW: Handle hyphenated names (e.g., Abdul-Majied, Anne-Marie)
+        # We split the word by the hyphen, process each part individually, and rejoin.
+        if "-" in word:
+            return "-".join(smart_cap(part) for part in word.split("-"))
+
+        # --- Existing Logic Below ---
         w = word.lower().capitalize()
 
         # Handle O' prefix (e.g., O'Neil, O'Connor)

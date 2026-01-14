@@ -1,8 +1,9 @@
-from selenium import webdriver
-import time
 import os
+import time
 import logging
-from typing import Optional, Union, Tuple
+
+from typing import Optional
+from selenium import webdriver
 from selenium.webdriver import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support import expected_conditions as EC
