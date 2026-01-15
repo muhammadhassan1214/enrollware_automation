@@ -118,7 +118,9 @@ def navigate_to_tc_product_orders(driver) -> bool | None:
 
 def login_to_ecards(driver, username=os.getenv("ATLAS_USERNAME"), password=os.getenv("ATLAS_PASSWORD")) -> bool:
     """Login to eCards with comprehensive error handling and retry logic."""
-    logout_from_aha(driver)
+    other_account = check_element_exists(driver, (By.XPATH, "//label[text()= 'Training Site']"), timeout=3)
+    if other_account:
+        logout_from_aha(driver)
     if not validate_environment_variables():
         return False
     try:
