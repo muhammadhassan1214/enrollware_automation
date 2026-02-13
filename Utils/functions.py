@@ -565,6 +565,9 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
             if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
                 continue
 
+            if training_site != 'Code Blue CPR Services, LLC':
+                return True
+
             logout_from_aha(driver)
             safe_navigate_to_url(driver, "https://ecards.heart.org/inventory")
             login_to_ecards(driver, username=os.getenv("AHA_NEW_USERNAME"), password=os.getenv("AHA_NEW_PASSWORD"))
