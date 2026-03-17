@@ -11,6 +11,7 @@ from selenium.webdriver.common.by import By
 from discord_notification import DiscordNotifier
 from ui_purchasing_toggle import purchasing_enabled, show_ui
 from Utils.utils import get_undetected_driver, wait_while_element_is_displaying
+from Utils.mail_sender.email_sender import send_email
 from Utils.functions import (
     go_back, create_xpath,
     add_error_log, get_order_data,
@@ -707,13 +708,9 @@ def run_every_15_minutes():
             message = generate_stock_summary(quantity_required)
             global last_message
             if message != last_message:
-                notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
-                if notifier.send_notification(message):
-                    logger.info("Discord notification sent successfully")
-                    last_message = message
-                else:
-                    logger.error("Failed to send Discord notification")
-
+                # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
+                send_email(message)
+                last_message = message
         except Exception as e:
             logger.error(f"Unhandled error in scheduled run #{run_count}: {e}")
 
