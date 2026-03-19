@@ -579,7 +579,7 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
             if not click_element_by_js(driver, (By.XPATH, "//div/a[contains(text(), 'Assign to Instructor')]")):
                 continue
 
-            if not select_by_text(driver, (By.ID, "RoleId"), 'TS Admin'):
+            if not select_by_text(driver, (By.ID, "RoleId"), 'TSC'):
                 logger.error("Failed to select TS Admin")
                 continue
 

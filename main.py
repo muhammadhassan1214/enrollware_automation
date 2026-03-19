@@ -29,26 +29,51 @@ quantity_required = []
 
 
 def generate_stock_summary(order_data_list):
+    # Return None if the list is empty so no email is generated
     if not order_data_list:
-        pass
+        return None
 
     sku_totals = {}
-
     for item in order_data_list:
         sku = item["sku"]
-        qty = item["qty"]
+        qty = int(item["qty"])
 
         if sku in sku_totals:
             sku_totals[sku] += qty
         else:
             sku_totals[sku] = qty
 
-    message = ""
+    html_message = """
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #2D8CFF; padding-bottom: 5px;">
+            You need to purchase the following e-cards
+        </h2>
 
-    for sku, total_qty in sku_totals.items():
-        message += f"{sku} - {total_qty}\n"
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: left;">
+            <thead>
+                <tr style="background-color: #f2f2f2;">
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">SKU / e-Card Type</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Quantity Required</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
 
-    return message
+    for sku, total_qty in sorted(sku_totals.items()):
+        html_message += f"""
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;">{sku}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>{total_qty}</strong></td>
+                </tr>
+        """
+
+    html_message += """
+            </tbody>
+        </table>
+    </div>
+    """
+
+    return html_message
 
 # Configure logging with simplified output
 def setup_logging():
