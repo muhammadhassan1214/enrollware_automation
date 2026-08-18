@@ -12,7 +12,7 @@ headers = {
 }
 
 
-def send_email(subject: str, html_content: str, send_to_email: str, send_to_name: str) -> bool:
+def send_email(subject: str, html_content: str) -> bool:
     payload = {
           "sender": {
             "name": "Code Blue CPR Services",
@@ -20,8 +20,8 @@ def send_email(subject: str, html_content: str, send_to_email: str, send_to_name
           },
           "to": [
             {
-              "email": send_to_email,
-              "name": send_to_name
+              "email": os.getenv("NATHAN_EMAIL"),
+              "name": "Nathaniel Shell"
             }
           ],
           "subject": subject,

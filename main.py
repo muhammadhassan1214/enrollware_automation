@@ -679,13 +679,13 @@ def run_every_15_minutes():
 
         try:
             main()  # Existing processing logic
-            message = generate_stock_summary(quantity_required)
-            global last_message
-            if message and message != last_message:
-                # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
-                if send_email("Time to refill your inventory", message, os.getenv("NATHAN_EMAIL"), "Nathaniel Shell"):
-                    logger.info("Email notification sent successfully for inventory replenishment")
-                last_message = message
+            # message = generate_stock_summary(quantity_required)
+            # global last_message
+            # if message and message != last_message:
+            #     # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
+            #     if send_email("Time to refill your inventory", message):
+            #         logger.info("Email notification sent successfully for inventory replenishment")
+            #     last_message = message
         except Exception as e:
             logger.error(f"Unhandled error in scheduled run #{run_count}: {e}")
 
