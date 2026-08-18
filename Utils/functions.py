@@ -195,6 +195,12 @@ def get_indexes_to_process(driver, condition) -> List[int]:
 
         for i, row in enumerate(rows, start=1):  # start=1 for 1-based index
             try:
+                # Paid Status check
+                td5_element = row.find_elements(By.XPATH, ".//td[3]")
+                td5 = td5_element[0].text.strip().lower() if td5_element else ""
+                if "no" in td5:
+                    continue
+
                 # Get text from columns safely
                 td2_element = row.find_elements(By.XPATH, ".//td[2]")
                 td2 = td2_element[0].text.strip().lower() if td2_element else ""
@@ -257,6 +263,10 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
         name = get_element_text(driver, (By.XPATH, name_xpath), default="Unknown")
         name = name.split('\n')[0].strip() if "\n" in name else name.strip()
 
+        # Get Email Address
+        email_xpath = create_xpath('Email Address')
+        email = get_element_text(driver, (By.XPATH, email_xpath), default="").strip()
+
         # Get number of orders
         products_xpath = f"{create_xpath('Products')}//tr"
         product_rows = driver.find_elements(By.XPATH, products_xpath)
@@ -291,7 +301,8 @@ def get_order_data(driver) -> Tuple[List[Dict[str, Any]], int]:
                     "name": name,
                     "quantity": quantity,
                     "product_code": product_code,
-                    "course_name": course_name
+                    "course_name": course_name,
+                    "email": email
                 })
 
             except Exception as e:
@@ -1053,151 +1064,127 @@ def make_purchase_on_shop_cpr(driver, product_code: str, quantity_to_order: int,
         return False
 
 
-def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: str, max_retries: int = 2) -> bool:
+def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: str) -> bool:
     """Assign to Admin Instructor - For ACLS/PALS courses."""
     if not available_courses:
         logger.error("Available courses not initialized")
         return False
 
     logger.info(f"Assigning {quantity} of {product_code} to Admin Instructor for {name}")
+    try:
+        # Step 1: Move to manage eCards
+        # manage_eCard_selector = "//a[contains(@id, 'accessible-megamenu')]"
+        # if not move_to_element(driver, (By.XPATH, manage_eCard_selector)):
+        #     logger.error("Failed to hover over manage eCards menu")
+        #     continue
+        #
+        # time.sleep(1)
+        #
+        # # Step 2: Click 'Assign to Instructors'
+        # if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Assign to Instructors']")):
+        #     logger.error("Failed to click 'Assign to Instructors'")
+        #     continue
 
-    for attempt in range(max_retries):
-        try:
-            # Step 1: Move to manage eCards
-            manage_eCard_selector = "//a[contains(@id, 'accessible-megamenu')]"
-            if not move_to_element(driver, (By.XPATH, manage_eCard_selector)):
-                logger.error("Failed to hover over manage eCards menu")
-                continue
+        safe_navigate_to_url(driver, "https://ecards.heart.org/InstructorAssignment")
 
-            time.sleep(1)
+        time.sleep(2)
 
-            # Step 2: Click 'Assign to Instructors'
-            if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Assign to Instructors']")):
-                logger.error("Failed to click 'Assign to Instructors'")
-                continue
+        # Step 3: Select TS Admin role
+        if not select_by_text(driver, (By.ID, "RoleId"), 'TS Admin'):
+            logger.error("Failed to select TS Admin")
 
-            time.sleep(2)
+        time.sleep(1)
 
-            # Step 3: Select TS Admin role
-            if not select_by_text(driver, (By.ID, "RoleId"), 'TS Admin'):
-                logger.error("Failed to select TS Admin")
-                continue
+        # Step 4: Select course
+        course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
+        if not course_name_on_ecard:
+            logger.error(f"Course name not found for product code: {product_code}")
 
-            time.sleep(1)
+        if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
+            logger.error("Failed to select course for Admin Instructor")
 
-            # Step 4: Select course
-            course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
-            if not course_name_on_ecard:
-                logger.error(f"Course name not found for product code: {product_code}")
-                continue
+        time.sleep(1)
 
-            if not select_by_text(driver, (By.ID, "CourseId"), course_name_on_ecard):
-                logger.error("Failed to select course for Admin Instructor")
-                continue
+        # Step 5: Select Training Center
+        if not select_by_text(driver, (By.ID, "ddlTC"), 'CPR Suppliers, LLC'):
+            logger.error("Failed to select Training Center")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Step 5: Select Training Center
-            if not select_by_text(driver, (By.ID, "ddlTC"), 'CPR Suppliers, LLC'):
-                logger.error("Failed to select Training Center")
-                continue
+        # Step 6: Select Training Site
+        if not select_by_text(driver, (By.ID, "ddlSite"), 'Shell CPR'):
+            logger.error("Failed to select Training Site")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Step 6: Select Training Site
-            if not select_by_text(driver, (By.ID, "ddlSite"), 'Shell CPR'):
-                logger.error("Failed to select Training Site")
-                continue
+        # Step 7: Select Instructor
+        if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
+            logger.error("Failed to open instructor dropdown")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Step 7: Select Instructor
-            if not click_element_by_js(driver, (By.XPATH, "//select[@id= 'assignTo']/following-sibling::div/button")):
-                logger.error("Failed to open instructor dropdown")
-                continue
+        instructor_name = format_name(name)
+        instructor_xpath = f"(//label[contains(text(), '{instructor_name}')])[1]"
+        if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
+            logger.error(f"Failed to select instructor: {name}")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            instructor_name = format_name(name)
-            instructor_xpath = f"(//label[contains(text(), '{instructor_name}')])[1]"
-            if not click_element_by_js(driver, (By.XPATH, instructor_xpath)):
-                logger.error(f"Failed to select instructor: {name}")
-                continue
+        # Step 8: Click Submit button
+        if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
+            logger.error("Failed to click Submit button")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Step 8: Click Submit button
-            if not click_element_by_js(driver, (By.ID, "btnMoveNext")):
-                logger.error("Failed to click Submit button")
-                continue
+        # Check available quantity
+        available_qyt_element = get_element_text(driver, (By.ID, "tdAvailQty"), default="0")
+        available_qyt = int(available_qyt_element) if available_qyt_element.isdigit() else 0
 
-            time.sleep(1)
+        if available_qyt < int(quantity):
+            logger.warning(f"Insufficient quantity for {product_code}. Available: {available_qyt}, Required: {quantity}")
 
-            # Check available quantity
-            available_qyt_element = get_element_text(driver, (By.ID, "tdAvailQty"), default="0")
-            available_qyt = int(available_qyt_element) if available_qyt_element.isdigit() else 0
+            # Navigate back to inventory without retrying
+            try:
+                # Try to go back to inventory directly
+                if click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
+                    logger.info("Successfully returned to inventory due to insufficient quantity")
+                else:
+                    # Alternative method: try to navigate back via browser back
+                    driver.get("https://ecards.heart.org/Inventory")
+                    time.sleep(2)
+                    logger.info("back to inventory via URL navigation")
+            except Exception as nav_error:
+                logger.error(f"Error navigating back to inventory: {nav_error}")
 
-            if available_qyt < int(quantity):
-                logger.warning(f"Insufficient quantity for {product_code}. Available: {available_qyt}, Required: {quantity}")
+            return False  # Return False but don't retry
 
-                # Navigate back to inventory without retrying
-                try:
-                    # Try to go back to inventory directly
-                    if click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
-                        logger.info("Successfully returned to inventory due to insufficient quantity")
-                    else:
-                        # Alternative method: try to navigate back via browser back
-                        driver.get("https://ecards.heart.org/Inventory")
-                        time.sleep(2)
-                        logger.info("back to inventory via URL navigation")
-                except Exception as nav_error:
-                    logger.error(f"Error navigating back to inventory: {nav_error}")
+        # Input quantity
+        if not input_element(driver, (By.ID, "qty1"), str(quantity)):
+            logger.error("Failed to input quantity")
 
-                return False  # Return False but don't retry
+        time.sleep(1)
 
-            # Input quantity
-            if not input_element(driver, (By.ID, "qty1"), str(quantity)):
-                logger.error("Failed to input quantity")
-                continue
+        # Click confirm
+        if not click_element_by_js(driver, (By.ID, "btnConfirm")):
+            logger.error("Failed to confirm assignment")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Click confirm
-            if not click_element_by_js(driver, (By.ID, "btnConfirm")):
-                logger.error("Failed to confirm assignment")
-                continue
+        # Click complete
+        if not click_element_by_js(driver, (By.ID, "btnComplete")):
+            logger.error("Failed to complete assignment")
 
-            time.sleep(1)
+        time.sleep(1)
 
-            # Click complete
-            if not click_element_by_js(driver, (By.ID, "btnComplete")):
-                logger.error("Failed to complete assignment")
-                continue
+        # Go to inventory
+        if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
+            logger.error("Failed to return to inventory")
 
-            time.sleep(1)
+        logger.info(f"Successfully assigned {quantity} of {product_code} (ACLS/PALS) to Admin Instructor for {name}")
+        return True
 
-            # Go to inventory
-            if not click_element_by_js(driver, (By.XPATH, "//a[text()= 'Go To Inventory']")):
-                logger.error("Failed to return to inventory")
-                continue
-
-            logger.info(f"Successfully assigned {quantity} of {product_code} (ACLS/PALS) to Admin Instructor for {name}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Admin Instructor assignment attempt {attempt + 1} failed: {e}")
-
-            # If this was a quantity issue, don't retry
-            if "available quantity" in str(e).lower() or "insufficient" in str(e).lower():
-                logger.info("Quantity issue detected - not retrying")
-                return False
-
-            if attempt < max_retries - 1:
-                time.sleep(3)
-                continue
-
-    logger.error("Failed to assign to Admin Instructor after all attempts")
-    return False
+    except Exception as e:
+        logger.error(f"Admin Instructor assignment failed: {e}")
 
 
 def add_error_log(driver, error_txt: str):
@@ -1214,6 +1201,10 @@ def add_error_log(driver, error_txt: str):
 
 def format_name(name: str) -> str:
     """Format a full name with smart title casing (handles Mc, Mac, O', and hyphens)."""
+
+    parts = name.split()
+    if len(parts) >= 2 and parts[0][:1].isupper() and parts[-1][:1].isupper():
+        return name
 
     def smart_cap(word: str) -> str:
         # NEW: Handle hyphenated names (e.g., Abdul-Majied, Anne-Marie)

@@ -3,3 +3,4 @@ webdriver-manager
 selenium
 python-dotenv
 lxml>=5.1.0
+openpyxl

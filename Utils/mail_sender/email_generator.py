@@ -1,4 +1,3 @@
-
 def generate_email(record_data: dict, days_left: int) -> str:
 
     # The Full HTML Template
@@ -81,3 +80,43 @@ def generate_email(record_data: dict, days_left: int) -> str:
                 border-radius: 4px; font-weight: bold; font-size: 12px;">REQUEST A ZOOM MEETING With Nathaniel 
                 Shell</a> </p> </div> </div> </body> </html>"""
     return html_content
+
+
+def generate_ebook_email(recipient_name: str, codes: list[str]) -> str:
+    code_rows = "".join(
+        f"<tr><td style='padding: 10px; border: 1px solid #ddd;'>{idx + 1}</td>"
+        f"<td style='padding: 10px; border: 1px solid #ddd; font-weight: 600;'>{code}</td></tr>"
+        for idx, code in enumerate(codes)
+    )
+
+    codes_table = f"""
+    <table style='width: 100%; border-collapse: collapse; margin-top: 10px;'>
+        <thead>
+            <tr style='background: #f5f7fb;'>
+                <th style='padding: 10px; border: 1px solid #ddd; text-align: left;'>#</th>
+                <th style='padding: 10px; border: 1px solid #ddd; text-align: left;'>eBook Code</th>
+            </tr>
+        </thead>
+        <tbody>
+            {code_rows}
+        </tbody>
+    </table>
+    """
+
+    return f"""
+    <html>
+    <body style='font-family: Arial, sans-serif; color: #333; line-height: 1.6;'>
+        <div style='max-width: 640px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 6px;'>
+            <p style='font-size: 16px;'>Hi {recipient_name or 'there'},</p>
+            <p style='margin-top: 10px;'>Here are your Heartsaver® First Aid CPR AED Student eBook codes. Each code is valid for one redemption:</p>
+            {codes_table}
+            <p style='margin-top: 15px; background: #f9fafc; padding: 12px; border-left: 4px solid #2D8CFF;'>
+                Tip: Copy a code and redeem it at <a href='https://ebooks.heart.org' style='color: #2D8CFF;'>ebooks.heart.org</a>.
+            </p>
+            <p>If you run into any issues accessing your eBook, reply to this email and we will help right away.</p>
+            <p>Thank you for training with us.</p>
+            <p style='margin-top: 25px; font-weight: bold;'>Code Blue CPR Services</p>
+        </div>
+    </body>
+    </html>
+    """

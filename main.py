@@ -1,6 +1,4 @@
 import os
-import sys
-import csv
 import time
 import logging
 
@@ -8,8 +6,8 @@ from datetime import datetime
 from typing import List, Dict, Any
 from courses import AvailableCourses
 from selenium.webdriver.common.by import By
-from discord_notification import DiscordNotifier
-from ui_purchasing_toggle import purchasing_enabled, show_ui
+from ui_purchasing_toggle import purchasing_enabled, prompt_toggle_once
+from Utils.ebook_handler import is_ebook_order, process_ebook_orders
 from Utils.utils import get_undetected_driver, wait_while_element_is_displaying
 from Utils.mail_sender.email_sender import send_email
 from Utils.functions import (
@@ -75,70 +73,13 @@ def generate_stock_summary(order_data_list):
 
     return html_message
 
-# Configure logging with simplified output
-def setup_logging():
-    """Setup simplified logging with necessary information only."""
-    # Create logs directory if it doesn't exist
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-
-    # Create timestamp for log file
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    log_file = f'logs/python_{timestamp}.log'
-
-    # Create formatters
-    file_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s'
-    )
-    console_formatter = logging.Formatter(
-        '%(levelname)s - %(message)s'
-    )
-
-    # Get root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO
-
-    # Remove any existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    # Console handler with simplified format
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
-
-    # File handler with detailed format
-    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(file_handler)
-
-    return log_file
-
 # Setup logging
-log_file = setup_logging()
 logger = logging.getLogger(__name__)
 
 # Log startup information
 print("=" * 50)
 print("ENROLLWARE AUTOMATION STARTING")
 print("=" * 50)
-logger.info(f"Application started - Log file: {log_file}")
-
-FAILED_ORDERS_CSV = "failed_orders.csv"
-
-def log_failed_order(order: Dict[str, Any], reason: str):
-    """Append failed order info to failed_orders.csv."""
-    file_exists = os.path.isfile(FAILED_ORDERS_CSV)
-    with open(FAILED_ORDERS_CSV, "a", newline='', encoding='utf-8') as csvfile:
-        fieldnames = list(order.keys()) + ["failure_reason"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        order_row = dict(order)
-        order_row["failure_reason"] = reason
-        writer.writerow(order_row)
 
 
 def is_acls_pals_course(course_name: str) -> bool:
@@ -285,7 +226,6 @@ class OrderProcessor:
                     if not assign_to_admin_instructor(self.driver, name, str(quantity), product_code):
                         reason = f"Failed to assign ACLS/PALS course {product_code} to Admin Instructor"
                         logger.error(reason)
-                        log_failed_order(order, reason)
                         all_success = False
                     continue
 
@@ -293,32 +233,28 @@ class OrderProcessor:
                 if self.available_courses.is_individual_course(product_code):
                     if training_site.startswith("TS"):
                         logger.info(f"Individual course {product_code} assigned to training site due to TS prefix")
-                        if not self.process_single_order(order, available_qyt_selector,
+                        if not self.process_single_order(order,
                                                         lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, get_training_site_name_for_order(training_site))):
                             reason = f"Failed to assign individual course {product_code} to training site"
                             logger.error(reason)
-                            log_failed_order(order, reason)
                             all_success = False
                     else:
                         logger.info(f"Individual course {product_code} assigned to instructor")
-                        if not self.process_single_order(order, available_qyt_selector, assign_to_instructor):
+                        if not self.process_single_order(order, assign_to_instructor):
                             reason = f"Failed to assign individual course {product_code} to instructor"
                             logger.error(reason)
-                            log_failed_order(order, reason)
                             all_success = False
                 else:
                     # Bundle courses: prefer training site assignment
                     logger.info(f"Bundle course {product_code} assigned to training site")
-                    if not self.process_single_order(order, available_qyt_selector,
+                    if not self.process_single_order(order,
                                                     lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, get_training_site_name_for_order(training_site))):
                         reason = f"Failed to assign bundle course {product_code} to training site"
                         logger.error(reason)
-                        log_failed_order(order, reason)
                         all_success = False
             except Exception as e:
                 reason = f"Exception during order assignment: {e}"
                 logger.error(reason)
-                log_failed_order(order, reason)
                 all_success = False
 
         return all_success
@@ -341,20 +277,19 @@ class OrderProcessor:
             logger.error(f"Error in Admin Instructor assignment: {e}")
             return False
 
-    def process_instructor_assignment(self, order_data: List[Dict[str, Any]], available_qyt_selector: str) -> bool:
+    def process_instructor_assignment(self, order_data: List[Dict[str, Any]]) -> bool:
         """Process instructor assignment with exception handling."""
         try:
             # This method is now only used for non-mixed order scenarios
             for order in order_data:
-                if not self.process_single_order(order, available_qyt_selector, assign_to_instructor):
+                if not self.process_single_order(order, assign_to_instructor):
                     return False
             return True
         except Exception as e:
             logger.error(f"Error in instructor assignment: {e}")
             return False
 
-    def process_training_site_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
-                                       available_qyt_selector: str) -> bool:
+    def process_training_site_assignment(self, order_data: List[Dict[str, Any]], training_site: str) -> bool:
         """Process training site assignment with exception handling."""
         try:
             # This method is now only used for non-mixed order scenarios
@@ -362,7 +297,7 @@ class OrderProcessor:
             training_site_name = get_training_site_name(code)
 
             for order in order_data:
-                if not self.process_single_order(order, available_qyt_selector,
+                if not self.process_single_order(order,
                                                 lambda driver, name, qty, code: assign_to_training_center(driver, name, qty, code, training_site_name)):
                     return False
             return True
@@ -370,8 +305,7 @@ class OrderProcessor:
             logger.error(f"Error in training site assignment: {e}")
             return False
 
-    def process_single_order(self, order: Dict[str, Any], available_qyt_selector: str,
-                             assignment_func) -> bool:
+    def process_single_order(self, order: Dict[str, Any], assignment_func) -> bool:
         """Process a single order with exception handling."""
         global quantity_required
         try:
@@ -380,8 +314,8 @@ class OrderProcessor:
             quantity = order.get('quantity', 0)
 
             # Get available quantity
-            xpath = available_qyt_selector.format(product_code)
-            available_qyt_text = get_element_text(self.driver, (By.XPATH, xpath))
+            common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
+            available_qyt_text = get_element_text(self.driver, (By.XPATH, f"{common_selector}[1]"))
             available_qyt = int(available_qyt_text) if available_qyt_text.isdigit() else 0
             quantity_int = int(quantity) if str(quantity).isdigit() else 0
 
@@ -395,7 +329,6 @@ class OrderProcessor:
                     if not purchase_success:
                         reason = f"Failed to purchase {quantity_to_order} eCards for {product_code}"
                         logger.error(reason)
-                        log_failed_order(order, reason)
                         return False
 
                     # Refresh eCards inventory page after successful purchase
@@ -411,14 +344,12 @@ class OrderProcessor:
             if not assignment_func(self.driver, name, quantity, product_code):
                 reason = f"Assignment function failed for {product_code}"
                 logger.error(reason)
-                log_failed_order(order, reason)
                 return False
             return True
 
         except Exception as e:
             reason = f"Error processing single order: {e}"
             logger.error(reason)
-            log_failed_order(order, reason)
             return False
 
     def process_single_row(self, index: int) -> bool:
@@ -447,6 +378,26 @@ class OrderProcessor:
             training_site = first_order.get('training_site', '')
 
             logger.info(f"Processing for: {name} - Training Site: {training_site}")
+
+            ebook_orders = [order for order in order_data if is_ebook_order(order)]
+            if ebook_orders:
+                non_ebook_orders = [order for order in order_data if not is_ebook_order(order)]
+                total_qty = sum(int(order.get('quantity', 0) or 0) for order in ebook_orders)
+                logger.info(f"Detected {len(ebook_orders)} eBook item(s) with total quantity {total_qty}")
+
+                if process_ebook_orders(ebook_orders, logger):
+                    if not non_ebook_orders:
+                        if mark_order_as_complete(self.driver):
+                            logger.info(f"✓ Successfully completed eBook-only row {index}")
+                            return True
+                        logger.error("Failed to mark eBook order as complete on the site")
+                        return False
+
+                    order_data = non_ebook_orders
+                else:
+                    logger.error("Failed to process eBook order(s); leaving order open.")
+                    self.safe_click_back_button()
+                    return False
 
             # Check if any order contains ACLS/PALS
             has_acls_pals = any(is_acls_pals_course(order.get('course_name', '')) for order in order_data)
@@ -511,7 +462,7 @@ class OrderProcessor:
                         available_quantity = int(available_quantity_text) if available_quantity_text.isdigit() else 0
                         quantity_to_purchase = max(0, quantity_needed - available_quantity)
                     if not available_course or available_quantity < quantity_needed:
-                        logger.warning(f"Course {product_code} not available in eCards inventory or insufficient quantity (Needed: {quantity_to_purchase}, Available: {available_quantity})")
+                        logger.warning(f"Course {product_code} not available in eCards inventory or insufficient quantity (Needed: {str(quantity_needed)}, Available: {str(available_quantity)})")
                         quantity_required.append({"sku": product_code, "qty": quantity_to_purchase if quantity_to_purchase > 0 else quantity_needed})
                         # Check if purchasing is enabled before attempting purchase
                         if purchasing_enabled():
@@ -539,8 +490,6 @@ class OrderProcessor:
                                 return False
                         else:
                             logger.info(f"Purchasing is OFF. Course {product_code} is not available in inventory and cannot be purchased automatically. Skipping order for {name}.")
-                            reason = f"Course {product_code} not available in inventory and purchasing is disabled"
-                            log_failed_order(order, reason)
                             self.safe_navigate_back()
                             self.safe_click_back_button()
                             return False
@@ -732,9 +681,10 @@ def run_every_15_minutes():
             main()  # Existing processing logic
             message = generate_stock_summary(quantity_required)
             global last_message
-            if message != last_message:
+            if message and message != last_message:
                 # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
-                send_email(message)
+                if send_email("Time to refill your inventory", message, os.getenv("NATHAN_EMAIL"), "Nathaniel Shell"):
+                    logger.info("Email notification sent successfully for inventory replenishment")
                 last_message = message
         except Exception as e:
             logger.error(f"Unhandled error in scheduled run #{run_count}: {e}")
@@ -753,8 +703,7 @@ def run_every_15_minutes():
 
 
 if __name__ == "__main__":
-    # Show the purchasing toggle UI only on the very first run of this process
-    show_ui()
+    prompt_toggle_once()
     try:
         run_every_15_minutes()
     except KeyboardInterrupt:

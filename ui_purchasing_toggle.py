@@ -2,6 +2,7 @@ import tkinter as tk
 import os
 
 STATE_FILE = "purchasing_toggle_state.txt"
+_ui_shown = False
 
 def save_toggle_state(enabled: bool):
     with open(STATE_FILE, "w") as f:
@@ -83,6 +84,14 @@ def show_ui():
 
     root.mainloop()
 
+def prompt_toggle_once():
+    """Show the toggle UI only once per process start."""
+    global _ui_shown
+    if _ui_shown:
+        return
+    _ui_shown = True
+    show_ui()
+
 # Show UI before automation starts
 if __name__ == "__main__":
-    show_ui()
+    prompt_toggle_once()

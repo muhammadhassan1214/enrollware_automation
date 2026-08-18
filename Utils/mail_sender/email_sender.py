@@ -12,8 +12,7 @@ headers = {
 }
 
 
-def send_email(text_content):
-    send_to_email = os.getenv("NATHAN_EMAIL")
+def send_email(subject: str, html_content: str, send_to_email: str, send_to_name: str) -> bool:
     payload = {
           "sender": {
             "name": "Code Blue CPR Services",
@@ -22,20 +21,22 @@ def send_email(text_content):
           "to": [
             {
               "email": send_to_email,
-              "name": "Nathaniel Shell"
+              "name": send_to_name
             }
           ],
-          "subject": "🛒 Stock Replenishment Required",
-          "textContent": text_content
+          "subject": subject,
+          "htmlContent": html_content
         }
 
 
     try:
         response = requests.post(URL, json=payload, headers=headers)
         if response.status_code == 201:
-            print(f"🛒 Stock Replenishment email sent successfully to {send_to_email}")
+            return True
         else:
             print(f"Error: {response.status_code}")
             print(response.text)
+            return False
     except Exception as e:
         print(f"Connection Error: {e}")
+        return False
