@@ -81,22 +81,9 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
             element.clear()
             time.sleep(0.2)
 
-            # Alternative clearing method
-            element.send_keys(Keys.CONTROL + "a")
-            element.send_keys(Keys.DELETE)
-            time.sleep(0.2)
-
             # Input the text
             element.send_keys(text)
             time.sleep(0.3)
-
-            # Verify input
-            actual_value = element.get_attribute('value')
-            if actual_value != text:
-                logger.warning(f"Input verification failed. Expected: '{text}', Got: '{actual_value}'")
-                # Try one more time
-                element.clear()
-                element.send_keys(text)
 
             return True
         except TimeoutException:
@@ -157,6 +144,22 @@ def get_element_text(driver, by_locator, timeout: int = 40, default: str = "") -
     except Exception as e:
         logger.error(f"Unexpected error in get_element_text: {e}")
         return default
+
+
+def checkbox_is_checked(driver, by_locator, timeout: int = 10) -> bool:
+    """Check if checkbox is checked with exception handling."""
+    try:
+        element = WebDriverWait(driver, timeout).until(EC.presence_of_element_located(by_locator))
+        return element.is_selected()
+    except TimeoutException:
+        logger.warning(f"Checkbox not found within {timeout} seconds: {by_locator}")
+        return False
+    except (NoSuchElementException, WebDriverException) as e:
+        logger.error(f"Error checking checkbox state: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error in checkbox_is_checked: {e}")
+        return False
 
 
 def get_undetected_driver(headless: bool = False, max_retries: int = 3) -> Optional[webdriver.Chrome]:

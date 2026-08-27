@@ -8,70 +8,32 @@ from courses import AvailableCourses
 from selenium.webdriver.common.by import By
 from ui_purchasing_toggle import purchasing_enabled, prompt_toggle_once
 from Utils.ebook_handler import is_ebook_order, process_ebook_orders
-from Utils.utils import get_undetected_driver, wait_while_element_is_displaying
+from Utils.functions import add_error_log, get_training_site_name
 from Utils.mail_sender.email_sender import send_email
-from Utils.functions import (
-    go_back, create_xpath,
-    add_error_log, get_order_data,
-    login_to_ecards, get_element_text,
-    click_element_by_js, assign_to_instructor,
-    safe_navigate_to_url, check_element_exists,
-    get_indexes_to_process, mark_order_as_complete,
-    get_training_site_name, make_purchase_on_shop_cpr,
-    assign_to_training_center, assign_to_admin_instructor,
-    login_to_enrollware_and_navigate_to_tc_product_orders,
+from Utils.utils import (
+    get_undetected_driver, wait_while_element_is_displaying,
+    checkbox_is_checked, click_element_by_js, safe_navigate_to_url,
+    check_element_exists, get_element_text
 )
+
+from Utils.pageSelectors import EnrollwareOrderPage, AHAInventoryPage
+from Utils.shopCprFunctions import make_purchase_on_shop_cpr
+
+from Utils.enrollwareFunctions import (
+    login_to_enrollware_and_navigate_to_tc_product_orders,
+    get_indexes_to_process, get_order_data, go_back,
+    mark_order_as_complete
+)
+
+from Utils.ahaFunctions import (
+    login_to_ecards, assign_to_instructor,
+    assign_to_training_center, assign_to_admin_instructor
+)
+
 
 last_message = ""
 quantity_required = []
 
-
-def generate_stock_summary(order_data_list):
-    # Return None if the list is empty so no email is generated
-    if not order_data_list:
-        return None
-
-    sku_totals = {}
-    for item in order_data_list:
-        sku = item["sku"]
-        qty = int(item["qty"])
-
-        if sku in sku_totals:
-            sku_totals[sku] += qty
-        else:
-            sku_totals[sku] = qty
-
-    html_message = """
-    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #2c3e50; border-bottom: 2px solid #2D8CFF; padding-bottom: 5px;">
-            You need to purchase the following e-cards
-        </h2>
-
-        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: left;">
-            <thead>
-                <tr style="background-color: #f2f2f2;">
-                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">SKU / e-Card Type</th>
-                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Quantity Required</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
-
-    for sku, total_qty in sorted(sku_totals.items()):
-        html_message += f"""
-                <tr>
-                    <td style="padding: 10px; border-bottom: 1px solid #ddd;">{sku}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>{total_qty}</strong></td>
-                </tr>
-        """
-
-    html_message += """
-            </tbody>
-        </table>
-    </div>
-    """
-
-    return html_message
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -451,9 +413,8 @@ class OrderProcessor:
                     product_code = order.get('product_code', '')
                     quantity_needed = int(order.get('quantity', 1))
 
-                    common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
-                    available_course_selector = f"{common_selector}[@role='button']"
-                    available_quantity_selector = f"{common_selector}[1]"
+                    available_course_selector = f"{AHAInventoryPage.available_course_selector(product_code)}[@role='button']"
+                    available_quantity_selector = f"{AHAInventoryPage.available_course_selector(product_code)}[1]"
                     available_quantity = 0
                     quantity_to_purchase = 0
                     available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
@@ -543,7 +504,7 @@ class OrderProcessor:
             click_element_by_js(self.driver, product_locator)
             time.sleep(1)
 
-            training_site_locator = (By.XPATH, create_xpath('Training Site'))
+            training_site_locator = EnrollwareOrderPage.order_data('Training Site')
             training_site_txt = get_element_text(self.driver, training_site_locator, default="Unknown").strip()
             if "wayne halfway" in training_site_txt.lower():
                 logger.info(f"Marking order as completed without processing due to `Wayne Halfway` training site")
@@ -563,6 +524,16 @@ class OrderProcessor:
             time.sleep(1)
             click_element_by_js(self.driver, (By.ID, "mainContent_cardPrint"))
             time.sleep(1)
+
+            if checkbox_is_checked(self.driver, EnrollwareOrderPage.course_record_entry):
+                logger.info("Course record entry checkbox is already checked")
+                safe_navigate_to_url(self.driver, tc_product_orders_page)
+                click_element_by_js(self.driver, product_locator)
+                time.sleep(1)
+                mark_order_as_complete(self.driver)
+                logger.info(f"Successfully processed Red Cross order at index {index}")
+                return True
+
             click_element_by_js(self.driver, (By.ID, "mainContent_arcSubmitBtn"))
             time.sleep(0.5)
             wait_while_element_is_displaying(self.driver, By.ID, "arcPleaseWaitRow", timeout=15)
@@ -579,7 +550,7 @@ class OrderProcessor:
                 # add error log to order
                 add_error_log(self.driver, error_txt)
                 self.safe_click_back_button()
-                return True
+                return False
 
             safe_navigate_to_url(self.driver, tc_product_orders_page)
             click_element_by_js(self.driver, product_locator)
@@ -703,7 +674,7 @@ def run_every_15_minutes():
 
 
 if __name__ == "__main__":
-    prompt_toggle_once()
+    # prompt_toggle_once()
     try:
         run_every_15_minutes()
     except KeyboardInterrupt:
