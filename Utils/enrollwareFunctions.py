@@ -26,7 +26,7 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
             time.sleep(5)
 
             # Check if already logged in
-            validation_button = check_element_exists(driver, EnrollwareLoginPage.login_button, timeout=5)
+            validation_button = check_element_exists(driver, EnrollwareLoginPage.login_button, timeout=2)
 
             if validation_button:
                 # Input credentials with validation
@@ -47,7 +47,7 @@ def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: i
                     continue
 
                 # Wait for login to complete
-                time.sleep(20)
+                time.sleep(5)
 
                 # Verify login success
                 if "admin" in driver.current_url.lower():
@@ -96,7 +96,7 @@ def get_indexes_to_process(driver, condition) -> List[int]:
         for i, row in enumerate(rows, start=1):  # start=1 for 1-based index
             try:
                 # Paid Status check
-                td5_element = row.find_elements(By.XPATH, ".//td[3]")
+                td5_element = row.find_elements(By.XPATH, ".//td[5]")
                 td5 = td5_element[0].text.strip().lower() if td5_element else ""
                 if "no" in td5:
                     continue
@@ -220,14 +220,13 @@ def mark_order_as_complete(driver) -> bool:
             logger.error("Failed to click status update button")
             return False
 
-        time.sleep(2)
+        # Wait for a moment
+        time.sleep(1)
 
         # Click email button
         if not click_element_by_js(driver, EnrollwareOrderPage.email_button):
             logger.error("Failed to click email button")
             return False
-
-        time.sleep(1)
 
         # Click send button
         if not click_element_by_js(driver, EnrollwareOrderPage.send_email_button):

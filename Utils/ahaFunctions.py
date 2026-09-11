@@ -96,13 +96,9 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str) ->
         if not click_element_by_js(driver, AHAInventoryPage.assign_to('Instructor')):
             return False
 
-        time.sleep(2)
-
         # Select TC Admin role
         if not select_by_text(driver, AssignToInstructorPage.role_select, 'TC Admin'):
             return False
-
-        time.sleep(1)
 
         # Select course
         course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
@@ -113,44 +109,30 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str) ->
         if not select_by_text(driver, AssignToInstructorPage.course_select, course_name_on_ecard):
             return False
 
-        time.sleep(1)
-
         # Select training center
         if not select_by_text(driver, AssignToInstructorPage.training_center_select, 'Shell CPR, LLC.'):
             return False
 
-        time.sleep(1)
-
         # Click assign to dropdown
         if not click_element_by_js(driver, AssignToInstructorPage.instructor_select):
             return False
-
-        time.sleep(1)
 
         # Select instructor by name
         instructor_name = format_name(name)
         if not click_element_by_js(driver, AssignToInstructorPage.instructor_name_selector(instructor_name)):
             return False
 
-        time.sleep(1)
-
         # Click move next
         if not click_element_by_js(driver, AssignToInstructorPage.submit_button):
             return False
-
-        time.sleep(1)
 
         # Input quantity
         if not input_element(driver, AssignToInstructorPage.quantity_input, str(quantity)):
             return False
 
-        time.sleep(1)
-
         # Click confirm
         if not click_element_by_js(driver, AssignToInstructorPage.continue_button):
             return False
-
-        time.sleep(1)
 
         # Click complete
         if not click_element_by_js(driver, AHAInventoryPage.finish_button):
@@ -163,6 +145,7 @@ def assign_to_instructor(driver, name: str, quantity: str, product_code: str) ->
             return False
 
         logger.info(f"Successfully assigned {quantity} of {product_code} ({'Individual' if available_courses.is_individual_course(product_code) else 'Bundle'}) to instructor {name}")
+        time.sleep(2)
         return True
 
     except Exception as e:
@@ -187,7 +170,7 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
     try:
         available_course_selector = f"{AHAInventoryPage.available_course_selector(product_code)}[@role='button']"
         # Click on the course
-        if not click_element_by_js(driver, available_course_selector):
+        if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
             return False
 
         time.sleep(1)
@@ -196,19 +179,13 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
         if not click_element_by_js(driver, AHAInventoryPage.assign_to('Training Site')):
             return False
 
-        time.sleep(2)
-
         # Select training center
         if not select_by_text(driver, AssignToTrainingCenterPage.training_center_select, 'Shell CPR, LLC.'):
             return False
 
-        time.sleep(1)
-
         # Select training site
         if not select_by_text(driver, AssignToTrainingCenterPage.training_site_select, training_site):
             return False
-
-        time.sleep(1)
 
         # Select course
         course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
@@ -219,8 +196,6 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
         if not select_by_text(driver, AssignToTrainingCenterPage.course_select, course_name_on_ecard):
             return False
 
-        time.sleep(1)
-
         # Input quantity
         if not input_element(driver, AssignToTrainingCenterPage.quantity_input, str(quantity)):
             return False
@@ -228,8 +203,6 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
         # Click validate
         if not click_element_by_js(driver, AssignToTrainingCenterPage.submit_button):
             return False
-
-        time.sleep(1)
 
         # Click complete
         if not click_element_by_js(driver, AHAInventoryPage.finish_button):
@@ -242,13 +215,14 @@ def assign_to_training_center(driver, name: str, quantity: str, product_code: st
             return False
 
         if training_site != 'Code Blue CPR Services, LLC':
+            time.sleep(2)
             return True
 
         logout_from_aha(driver)
         safe_navigate_to_url(driver, "https://ecards.heart.org/inventory")
         login_to_ecards(driver, username=os.getenv("AHA_NEW_USERNAME"), password=os.getenv("AHA_NEW_PASSWORD"))
 
-        if not click_element_by_js(driver, available_course_selector):
+        if not click_element_by_js(driver, (By.XPATH, available_course_selector)):
             return False
 
         # Click 'Assign to Instructor'
@@ -364,8 +338,6 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
             logger.error("Failed to select TS Admin")
             return False
 
-        time.sleep(1)
-
         # Step 4: Select course
         course_name_on_ecard = available_courses.course_name_on_eCard(product_code)
         if not course_name_on_ecard:
@@ -376,21 +348,15 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
             logger.error("Failed to select course for Admin Instructor")
             return False
 
-        time.sleep(1)
-
         # Step 5: Select Training Center
         if not select_by_text(driver, AssignToInstructorPage.training_center_select, 'CPR Suppliers, LLC'):
             logger.error("Failed to select Training Center")
             return False
 
-        time.sleep(1)
-
         # Step 6: Select Training Site
         if not select_by_text(driver, AssignToInstructorPage.training_site_select, 'Shell CPR'):
             logger.error("Failed to select Training Site")
             return False
-
-        time.sleep(1)
 
         # Step 7: Select Instructor
         if not click_element_by_js(driver, AssignToInstructorPage.instructor_select):
@@ -403,8 +369,6 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
         if not click_element_by_js(driver, AssignToInstructorPage.instructor_name_selector(instructor_name)):
             logger.error(f"Failed to select instructor: {name}")
             return False
-
-        time.sleep(1)
 
         # Step 8: Click Submit button
         if not click_element_by_js(driver, AssignToInstructorPage.submit_button):
@@ -440,8 +404,6 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
             logger.error("Failed to input quantity")
             return False
 
-        time.sleep(1)
-
         # Click confirm
         if not click_element_by_js(driver, AssignToInstructorPage.continue_button):
             logger.error("Failed to confirm assignment")
@@ -462,6 +424,7 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
             return False
 
         logger.info(f"Successfully assigned {quantity} of {product_code} (ACLS/PALS) to Admin Instructor for {name}")
+        time.sleep(2)
         return True
 
     except Exception as e:
@@ -472,30 +435,25 @@ def assign_to_admin_instructor(driver, name: str, quantity: str, product_code: s
 def format_name(name: str) -> str:
     """Format a full name with smart title casing (handles Mc, Mac, O', and hyphens)."""
 
-    parts = name.split()
-    if len(parts) >= 2 and parts[0][:1].isupper() and parts[-1][:1].isupper():
-        return name
-
     def smart_cap(word: str) -> str:
-        # NEW: Handle hyphenated names (e.g., Abdul-Majied, Anne-Marie)
-        # We split the word by the hyphen, process each part individually, and rejoin.
+        # Handle hyphenated names (e.g., Abdul-Majied, Anne-Marie)
         if "-" in word:
             return "-".join(smart_cap(part) for part in word.split("-"))
 
-        # --- Existing Logic Below ---
-        w = word.lower().capitalize()
+        # Base capitalization (e.g., "donna" -> "Donna")
+        w = word.capitalize()
 
         # Handle O' prefix (e.g., O'Neil, O'Connor)
-        if re.match(r"^o'[a-z]", w.lower()):
-            return "O'" + w[2:].capitalize()
+        if re.match(r"^o'[a-z]", word.lower()):
+            return "O'" + word[2:].capitalize()
 
-        # Handle Mc prefix (e.g., McKinney, McDonald)
-        if w.lower().startswith("mc") and len(w) > 2:
-            return "Mc" + w[2].upper() + w[3:]
+        # Handle Mc prefix (e.g., McKinney, McDonald, McCarty)
+        if word.lower().startswith("mc") and len(word) > 2:
+            return "Mc" + word[2].upper() + word[3:].lower()
 
         # Handle Mac prefix (e.g., MacArthur, MacGregor)
-        if w.lower().startswith("mac") and len(w) > 3:
-            return "Mac" + w[3].upper() + w[4:]
+        if word.lower().startswith("mac") and len(word) > 3:
+            return "Mac" + word[3].upper() + word[4:].lower()
 
         return w
 

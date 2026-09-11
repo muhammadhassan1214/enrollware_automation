@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import List, Dict, Any
 from courses import AvailableCourses
 from selenium.webdriver.common.by import By
-from ui_purchasing_toggle import purchasing_enabled, prompt_toggle_once
+from ui_purchasing_toggle import purchasing_enabled, prompt_toggle_once, update_inventory, start_ui
 from Utils.ebook_handler import is_ebook_order, process_ebook_orders
-from Utils.functions import add_error_log, get_training_site_name
+from Utils.functions import add_error_log, get_training_site_name, generate_stock_summary
 from Utils.mail_sender.email_sender import send_email
 from Utils.utils import (
     get_undetected_driver, wait_while_element_is_displaying,
@@ -17,7 +17,6 @@ from Utils.utils import (
 )
 
 from Utils.pageSelectors import EnrollwareOrderPage, AHAInventoryPage
-from Utils.shopCprFunctions import make_purchase_on_shop_cpr
 
 from Utils.enrollwareFunctions import (
     login_to_enrollware_and_navigate_to_tc_product_orders,
@@ -281,26 +280,17 @@ class OrderProcessor:
             available_qyt = int(available_qyt_text) if available_qyt_text.isdigit() else 0
             quantity_int = int(quantity) if str(quantity).isdigit() else 0
 
-            # Purchase additional if needed
+            # Check and record shortage (purchasing logic removed)
             if available_qyt < quantity_int:
                 quantity_to_order = quantity_int - available_qyt
                 quantity_required.append({"sku": product_code, "qty": quantity_to_order})
-                if purchasing_enabled():
-                    logger.info(f"Purchasing {quantity_to_order} additional eCards for {product_code}")
-                    purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_to_order, name)
-                    if not purchase_success:
-                        reason = f"Failed to purchase {quantity_to_order} eCards for {product_code}"
-                        logger.error(reason)
-                        return False
-
-                    # Refresh eCards inventory page after successful purchase
-                    logger.info("Refreshing eCards inventory after purchase...")
-                    self.driver.refresh()
-                    time.sleep(5)  # Wait for inventory to update
-                else:
-                    logger.info(f"Purchasing is OFF. Please purchase {quantity_to_order} of {product_code} manually for order {name}.")
-                    # Skip purchase, continue with next order
-                    return True
+                try:
+                    update_inventory(quantity_required)
+                except Exception:
+                    logger.exception("Failed to update inventory UI")
+                logger.info(f"Automated purchasing removed. Shortage: {quantity_to_order} of {product_code} shown in UI.")
+                # Preserve previous behavior of skipping purchase-handling for this order
+                return True
 
             # Assign the order
             if not assignment_func(self.driver, name, quantity, product_code):
@@ -425,48 +415,25 @@ class OrderProcessor:
                     if not available_course or available_quantity < quantity_needed:
                         logger.warning(f"Course {product_code} not available in eCards inventory or insufficient quantity (Needed: {str(quantity_needed)}, Available: {str(available_quantity)})")
                         quantity_required.append({"sku": product_code, "qty": quantity_to_purchase if quantity_to_purchase > 0 else quantity_needed})
-                        # Check if purchasing is enabled before attempting purchase
-                        if purchasing_enabled():
-                            # Purchase the exact quantity needed (no retry logic)
-                            quantity_needed = max(0, quantity_needed - available_quantity)
-                            logger.info(f"Purchasing {quantity_needed} eCards for {product_code}")
-                            purchase_success = make_purchase_on_shop_cpr(self.driver, product_code, quantity_needed, name)
-                            if not purchase_success:
-                                logger.error(f"Failed to purchase {quantity_needed} eCards for {product_code}")
-                                self.safe_navigate_back()
-                                self.safe_click_back_button()
-                                return False
+                        try:
+                            update_inventory(quantity_required)
+                        except Exception:
+                            logger.exception("Failed to update inventory UI")
 
-                            # Refresh eCards inventory page after purchase
-                            logger.info("Refreshing eCards inventory after purchase...")
-                            self.driver.refresh()
-                            time.sleep(5)  # Wait for inventory to update
-
-                            # Check again if course is now available
-                            available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-                            if not available_course:
-                                logger.error(f"Course {product_code} still not available after purchase")
-                                self.safe_navigate_back()
-                                self.safe_click_back_button()
-                                return False
-                        else:
-                            logger.info(f"Purchasing is OFF. Course {product_code} is not available in inventory and cannot be purchased automatically. Skipping order for {name}.")
-                            self.safe_navigate_back()
-                            self.safe_click_back_button()
-                            return False
+                        logger.info(f"Automated purchasing removed. Course {product_code} shortage shown in UI. Skipping order for {name}.")
+                        # Return to order list and skip this order
+                        self.safe_navigate_back()
+                        self.safe_click_back_button()
+                        return False
 
             # Process mixed order assignment (each order individually)
             common_selector_base = "//td[contains(text(), '{}')]/preceding-sibling::td[1]"
 
             assignment_success = False
-            for assignment_attempt in range(2):  # Retry assignment once if it fails
-                if self.process_order_assignment(order_data, training_site, common_selector_base):
-                    assignment_success = True
-                    break
-                else:
-                    logger.warning(f"Assignment attempt {assignment_attempt + 1} failed for row {index}")
-                    if assignment_attempt < 1:  # If not last attempt
-                        time.sleep(3)
+            if self.process_order_assignment(order_data, training_site, common_selector_base):
+                assignment_success = True
+            else:
+                logger.warning(f"Assignment attempt failed for row {index}")
 
             if not assignment_success:
                 logger.error(f"Failed to process order assignment for row {index} after all attempts")
@@ -505,7 +472,7 @@ class OrderProcessor:
             time.sleep(1)
 
             training_site_locator = EnrollwareOrderPage.order_data('Training Site')
-            training_site_txt = get_element_text(self.driver, training_site_locator, default="Unknown").strip()
+            training_site_txt = get_element_text(self.driver, (By.XPATH, training_site_locator), default="Unknown").strip()
             if "wayne halfway" in training_site_txt.lower():
                 logger.info(f"Marking order as completed without processing due to `Wayne Halfway` training site")
                 mark_order_as_complete(self.driver)
@@ -524,6 +491,17 @@ class OrderProcessor:
             time.sleep(1)
             click_element_by_js(self.driver, (By.ID, "mainContent_cardPrint"))
             time.sleep(1)
+
+            if check_element_exists(self.driver, (By.XPATH, "//div[contains(text(), 'There are no students registered at this time')]")):
+                logger.error(f"No students registered for Red Cross order at index {index}")
+                err_txt = "No students registered"
+                safe_navigate_to_url(self.driver, tc_product_orders_page)
+                click_element_by_js(self.driver, product_locator)
+                time.sleep(1)
+                # add error log to order
+                add_error_log(self.driver, err_txt)
+                self.safe_click_back_button()
+                return True
 
             if checkbox_is_checked(self.driver, EnrollwareOrderPage.course_record_entry):
                 logger.info("Course record entry checkbox is already checked")
@@ -550,7 +528,7 @@ class OrderProcessor:
                 # add error log to order
                 add_error_log(self.driver, error_txt)
                 self.safe_click_back_button()
-                return False
+                return True
 
             safe_navigate_to_url(self.driver, tc_product_orders_page)
             click_element_by_js(self.driver, product_locator)
@@ -558,6 +536,7 @@ class OrderProcessor:
             mark_order_as_complete(self.driver)
             logger.info(f"Successfully processed Red Cross order at index {index}")
             return True
+
         except Exception as e:
             logger.error(f"Error processing Red Cross order at index {index}: {e}")
             return False
@@ -650,13 +629,13 @@ def run_every_15_minutes():
 
         try:
             main()  # Existing processing logic
-            # message = generate_stock_summary(quantity_required)
-            # global last_message
-            # if message and message != last_message:
-            #     # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
-            #     if send_email("Time to refill your inventory", message):
-            #         logger.info("Email notification sent successfully for inventory replenishment")
-            #     last_message = message
+            message = generate_stock_summary(quantity_required)
+            global last_message
+            if message and message != last_message:
+                # notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"))
+                if send_email("Time to refill your inventory", message):
+                    logger.info("Email notification sent successfully for inventory replenishment")
+                last_message = message
         except Exception as e:
             logger.error(f"Unhandled error in scheduled run #{run_count}: {e}")
 
@@ -674,7 +653,7 @@ def run_every_15_minutes():
 
 
 if __name__ == "__main__":
-    # prompt_toggle_once()
+    prompt_toggle_once()
     try:
         run_every_15_minutes()
     except KeyboardInterrupt:

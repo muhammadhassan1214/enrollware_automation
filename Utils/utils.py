@@ -2,7 +2,7 @@ import os
 import time
 import logging
 
-from typing import Optional
+from typing import Optional, Any
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
@@ -68,7 +68,7 @@ def click_element_by_js(driver, by_locator, timeout: int = 10, max_retries: int 
         return False
 
 
-def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries: int = 3) -> bool:
+def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries: int = 3) -> bool | None | Any:
     """Input text with comprehensive exception handling and validation."""
     def _input_text():
         try:
@@ -79,6 +79,11 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
 
             # Clear the field safely
             element.clear()
+            time.sleep(0.2)
+
+            # if not cleared, use backspace to ensure the field is empty
+            element.send_keys(Keys.CONTROL + "a")
+            element.send_keys(Keys.BACKSPACE)
             time.sleep(0.2)
 
             # Input the text
@@ -106,7 +111,7 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
         return False
 
 
-def move_to_element(driver, locator, timeout: int = 10, max_retries: int = 3) -> bool:
+def move_to_element(driver, locator, timeout: int = 10, max_retries: int = 3) -> bool | None | Any:
     """Move to element with exception handling."""
     def _move():
         try:
@@ -261,43 +266,36 @@ def check_element_exists(driver, by_locator, timeout: int = 3) -> bool:
         return False
 
 
-def select_by_text(driver, by_locator, text: str, timeout: int = 10, max_retries: int = 3) -> bool:
+def select_by_text(driver, by_locator, text: str, timeout: int = 10) -> bool:
     """Select dropdown option by text with exception handling."""
-    def _select():
-        try:
-            select_element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
-            select = Select(select_element)
-
-            # Check if option exists
-            options = [option.text.strip() for option in select.options]
-            if text not in options:
-                logger.error(f"Option '{text}' not found. Available options: {options}")
-                return False
-
-            select.select_by_visible_text(text)
-            time.sleep(0.5)
-
-            # Verify selection
-            selected_option = select.first_selected_option.text.strip()
-            if selected_option != text:
-                logger.warning(f"Selection verification failed. Expected: '{text}', Selected: '{selected_option}'")
-                return False
-
-            return True
-        except TimeoutException:
-            logger.error(f"Select element not found within {timeout} seconds: {by_locator}")
-            return False
-        except (NoSuchElementException, ElementNotInteractableException) as e:
-            logger.error(f"Select operation failed: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error in select operation: {e}")
-            return False
-
     try:
-        return safe_execute_with_retry(_select, max_retries)
+        select_element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
+        select = Select(select_element)
+
+        # Check if option exists
+        options = [option.text.strip() for option in select.options]
+        if text not in options:
+            logger.error(f"Option '{text}' not found. Available options: {options}")
+            return False
+
+        select.select_by_visible_text(text)
+        time.sleep(0.5)
+
+        # Verify selection
+        selected_option = select.first_selected_option.text.strip()
+        if selected_option != text:
+            logger.warning(f"Selection verification failed. Expected: '{text}', Selected: '{selected_option}'")
+            return False
+
+        return True
+    except TimeoutException:
+        logger.error(f"Select element not found within {timeout} seconds: {by_locator}")
+        return False
+    except (NoSuchElementException, ElementNotInteractableException) as e:
+        logger.error(f"Select operation failed: {e}")
+        return False
     except Exception as e:
-        logger.error(f"Critical error in select_by_text: {e}")
+        logger.error(f"Unexpected error in select operation: {e}")
         return False
 
 

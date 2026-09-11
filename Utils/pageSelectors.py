@@ -8,7 +8,7 @@ class EnrollwareLoginPage:
     login_button = (By.ID, "login-button")
 
 class EnrollwareOrderPage:
-    order_data = lambda x: (By.XPATH, f"//label[text()= '{x}']/parent::div/following-sibling::div")
+    order_data = lambda x: f"//label[text()= '{x}:']/parent::div/following-sibling::div"
     order_status_select = (By.ID, "mainContent_status")
     status_update_button = (By.ID, "mainContent_statusUpdateBtn")
     email_button = (By.ID, "mainContent_emailBtn")
@@ -19,12 +19,12 @@ class EnrollwareOrderPage:
 class AHALoginPage:
     sign_in_link = (By.XPATH, "(//button[text()= 'Sign In | Sign Up'])[1]")
     username_input = (By.ID, "Email")
-    password_input = (By.ID, "password")
-    sign_in_button = (By.ID, "login-button")
+    password_input = (By.ID, "Password")
+    sign_in_button = (By.ID, "btnSignIn")
 
 class AHAInventoryPage:
-    available_course_selector = lambda x: (By.XPATH, f"//td[contains(text(), '{x}')]/preceding-sibling::td")
-    assign_to = lambda x: (By.XPATH, f"//div/a[contains(text(), Assign to {x})]")
+    available_course_selector = lambda x: f"//td[contains(text(), '{x}')]/preceding-sibling::td"
+    assign_to = lambda x: (By.XPATH, f"//div/a[contains(text(), 'Assign to {x}')]")
     finish_button = (By.ID, "btnComplete")
     go_to_inventory_button = (By.XPATH, "//a[text()= 'Go To Inventory']")
 

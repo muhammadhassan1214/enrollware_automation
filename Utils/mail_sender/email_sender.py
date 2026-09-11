@@ -20,8 +20,8 @@ def send_email(subject: str, html_content: str) -> bool:
           },
           "to": [
             {
-              "email": os.getenv("NATHAN_EMAIL"),
-              "name": "Nathaniel Shell"
+              "email": os.getenv("HASSAAN_EMAIL"),
+              "name": "Hassaan Mughal"
             }
           ],
           "subject": subject,
