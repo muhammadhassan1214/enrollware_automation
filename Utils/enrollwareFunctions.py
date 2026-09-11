@@ -74,6 +74,7 @@ def navigate_to_tc_product_orders(driver) -> bool:
         url = "https://www.enrollware.com/admin/tc-product-order-list-tc.aspx"
         if safe_navigate_to_url(driver, url):
             logger.info("Successfully navigated to TC Product Orders")
+            select_by_text(driver, EnrollwareOrderPage.show_entries_select, "All")
             return True
     except Exception as e:
         logger.error(f"Navigation failed: {e}")

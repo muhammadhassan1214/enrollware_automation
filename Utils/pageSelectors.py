@@ -8,6 +8,7 @@ class EnrollwareLoginPage:
     login_button = (By.ID, "login-button")
 
 class EnrollwareOrderPage:
+    show_entries_select = (By.XPATH, "//span[text()= 'Show:']/parent::label/child::select")
     order_data = lambda x: f"//label[text()= '{x}:']/parent::div/following-sibling::div"
     order_status_select = (By.ID, "mainContent_status")
     status_update_button = (By.ID, "mainContent_statusUpdateBtn")
