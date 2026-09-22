@@ -24,6 +24,7 @@ class AHALoginPage:
     sign_in_button = (By.ID, "btnSignIn")
 
 class AHAInventoryPage:
+    stock_id = lambda x: (By.XPATH, f"//tbody/tr[@role='row']/td[{x}]")
     available_course_selector = lambda x: f"//td[contains(text(), '{x}')]/preceding-sibling::td"
     assign_to = lambda x: (By.XPATH, f"//div/a[contains(text(), 'Assign to {x}')]")
     finish_button = (By.ID, "btnComplete")

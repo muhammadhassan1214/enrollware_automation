@@ -107,16 +107,6 @@ def generate_stock_summary(order_data_list):
     if not order_data_list:
         return None
 
-    sku_totals = {}
-    for item in order_data_list:
-        sku = item["sku"]
-        qty = int(item["qty"])
-
-        if sku in sku_totals:
-            sku_totals[sku] += qty
-        else:
-            sku_totals[sku] = qty
-
     html_message = """
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2c3e50; border-bottom: 2px solid #2D8CFF; padding-bottom: 5px;">
@@ -126,18 +116,29 @@ def generate_stock_summary(order_data_list):
         <table style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: left;">
             <thead>
                 <tr style="background-color: #f2f2f2;">
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Order</th>
                     <th style="padding: 10px; border-bottom: 2px solid #ddd;">SKU / e-Card Type</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Available</th>
                     <th style="padding: 10px; border-bottom: 2px solid #ddd;">Quantity Required</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Shortage</th>
                 </tr>
             </thead>
             <tbody>
     """
 
-    for sku, total_qty in sorted(sku_totals.items()):
+    for item in order_data_list:
+        sku = item["sku"]
+        shortage = int(item["qty"])
+        required = int(item.get("required_qty", shortage))
+        available = int(item.get("available_qty", max(0, required - shortage)))
+        order_name = item.get("order_name", "Unknown")
         html_message += f"""
                 <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;">{order_name}</td>
                     <td style="padding: 10px; border-bottom: 1px solid #ddd;">{sku}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>{total_qty}</strong></td>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;">{available}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;">{required}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>{shortage}</strong></td>
                 </tr>
         """
 

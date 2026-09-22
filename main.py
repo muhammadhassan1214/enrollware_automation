@@ -16,7 +16,7 @@ from Utils.utils import (
     check_element_exists, get_element_text
 )
 
-from Utils.pageSelectors import EnrollwareOrderPage, AHAInventoryPage
+from Utils.pageSelectors import EnrollwareOrderPage
 
 from Utils.enrollwareFunctions import (
     login_to_enrollware_and_navigate_to_tc_product_orders,
@@ -26,7 +26,7 @@ from Utils.enrollwareFunctions import (
 
 from Utils.ahaFunctions import (
     login_to_ecards, assign_to_instructor,
-    assign_to_training_center, assign_to_admin_instructor
+    assign_to_training_center, assign_to_admin_instructor, get_stock_info
 )
 
 
@@ -63,6 +63,7 @@ class OrderProcessor:
     def __init__(self):
         self.available_courses = None
         self.driver = None
+        self.stock_info = {}
 
     def initialize(self) -> bool:
         """Initialize the order processor with safe exception handling."""
@@ -145,11 +146,13 @@ class OrderProcessor:
                     self.driver.switch_to.window(self.driver.window_handles[0])
                     return False
 
-                login_to_ecards(self.driver)
+                if not login_to_ecards(self.driver):
+                    return False
 
                 # If redirected to log in after click, try once more
                 if "login" in self.driver.current_url.lower():
-                    login_to_ecards(self.driver)
+                    if not login_to_ecards(self.driver):
+                        return False
 
                 return True
 
@@ -167,6 +170,21 @@ class OrderProcessor:
 
         logger.error("Failed to setup eCards session")
         return False
+
+    def refresh_stock_snapshot(self) -> bool:
+        """Log into eCards and capture one stock snapshot for this scheduled run."""
+        if not self.setup_eCards_session():
+            return False
+
+        try:
+            self.stock_info = get_stock_info(self.driver)
+            logger.info("Captured stock snapshot for %d product codes", len(self.stock_info))
+            return True
+        except Exception as e:
+            logger.error(f"Failed to capture eCards stock snapshot: {e}")
+            return False
+        finally:
+            self.safe_navigate_back()
 
     def process_order_assignment(self, order_data: List[Dict[str, Any]], training_site: str,
                                available_qyt_selector: str) -> bool:
@@ -233,6 +251,7 @@ class OrderProcessor:
                 # For ACLS/PALS courses, bypass quantity checks and proceed directly
                 if not assign_to_admin_instructor(self.driver, name, str(quantity), product_code):
                     return False
+                self.stock_info[product_code] -= int(quantity)
             return True
         except Exception as e:
             logger.error(f"Error in Admin Instructor assignment: {e}")
@@ -267,42 +286,55 @@ class OrderProcessor:
             return False
 
     def process_single_order(self, order: Dict[str, Any], assignment_func) -> bool:
-        """Process a single order with exception handling."""
-        global quantity_required
+        """Process a single order using the run-level stock snapshot."""
         try:
             name = order.get('name', '')
             product_code = order.get('product_code', '')
             quantity = order.get('quantity', 0)
-
-            # Get available quantity
-            common_selector = f"//td[contains(text(), '{product_code}')]/preceding-sibling::td"
-            available_qyt_text = get_element_text(self.driver, (By.XPATH, f"{common_selector}[1]"))
-            available_qyt = int(available_qyt_text) if available_qyt_text.isdigit() else 0
-            quantity_int = int(quantity) if str(quantity).isdigit() else 0
-
-            # Check and record shortage (purchasing logic removed)
-            if available_qyt < quantity_int:
-                quantity_to_order = quantity_int - available_qyt
-                quantity_required.append({"sku": product_code, "qty": quantity_to_order})
-                try:
-                    update_inventory(quantity_required)
-                except Exception:
-                    logger.exception("Failed to update inventory UI")
-                logger.info(f"Automated purchasing removed. Shortage: {quantity_to_order} of {product_code} shown in UI.")
-                # Preserve previous behavior of skipping purchase-handling for this order
-                return True
 
             # Assign the order
             if not assignment_func(self.driver, name, quantity, product_code):
                 reason = f"Assignment function failed for {product_code}"
                 logger.error(reason)
                 return False
+            self.stock_info[product_code] -= int(quantity)
             return True
 
         except Exception as e:
             reason = f"Error processing single order: {e}"
             logger.error(reason)
             return False
+
+    def reserve_order_stock(self, order_data: List[Dict[str, Any]]) -> bool:
+        """Reserve all lines in an order from the run-level snapshot."""
+        global quantity_required
+        shortages = []
+        for order in order_data:
+            product_code = order.get('product_code', '')
+            quantity_needed = int(order.get('quantity', 0))
+            available_quantity = self.stock_info.get(product_code, 0)
+            if available_quantity < quantity_needed:
+                shortages.append({
+                    "sku": product_code,
+                    "qty": quantity_needed - available_quantity,
+                    "required_qty": quantity_needed,
+                    "available_qty": available_quantity,
+                    "order_name": order.get("name", "Unknown")
+                })
+
+        if shortages:
+            quantity_required.extend(shortages)
+            try:
+                update_inventory(quantity_required)
+            except Exception:
+                logger.exception("Failed to update inventory UI")
+            logger.warning(
+                "Skipping entire order because the stock snapshot is insufficient: %s",
+                shortages
+            )
+            return False
+
+        return True
 
     def process_single_row(self, index: int) -> bool:
         """Process a single row with comprehensive exception handling."""
@@ -367,19 +399,22 @@ class OrderProcessor:
                     self.safe_click_back_button()
                     return True  # Not an error, just skipped
 
+            if not self.reserve_order_stock(order_data):
+                self.safe_click_back_button()
+                return False
+
             # Setup eCards session
             if not self.setup_eCards_session():
                 logger.error(f"Failed to setup eCards session for row {index}")
                 self.safe_click_back_button()
                 return False
 
-            # Check if all orders are ACLS/PALS (bypass inventory checks completely)
+            # ACLS/PALS use the same snapshot validation as every other product.
             all_acls_pals = all(is_acls_pals_course(order.get('course_name', '')) for order in order_data)
 
             if all_acls_pals:
-                logger.info(f"All courses are ACLS/PALS - bypassing inventory checks completely")
+                logger.info("All courses are ACLS/PALS and passed the stock snapshot check")
 
-                # Process all ACLS/PALS assignments directly without inventory checks
                 if self.process_admin_instructor_assignment(order_data):
                     # Complete the order
                     self.safe_navigate_back()
@@ -391,40 +426,6 @@ class OrderProcessor:
                     self.safe_navigate_back()
                     self.safe_click_back_button()
                     return False
-
-            # For mixed orders or non-ACLS/PALS courses, proceed with inventory checks for non-ACLS/PALS items
-            non_acls_pals_orders = [order for order in order_data if not is_acls_pals_course(order.get('course_name', ''))]
-
-            if non_acls_pals_orders:
-                logger.info(f"Checking inventory for {len(non_acls_pals_orders)} non-ACLS/PALS courses")
-
-                # Check inventory availability for non-ACLS/PALS courses
-                for order in non_acls_pals_orders:
-                    product_code = order.get('product_code', '')
-                    quantity_needed = int(order.get('quantity', 1))
-
-                    available_course_selector = f"{AHAInventoryPage.available_course_selector(product_code)}[@role='button']"
-                    available_quantity_selector = f"{AHAInventoryPage.available_course_selector(product_code)}[1]"
-                    available_quantity = 0
-                    quantity_to_purchase = 0
-                    available_course = check_element_exists(self.driver, (By.XPATH, available_course_selector))
-                    if available_course:
-                        available_quantity_text = get_element_text(self.driver, (By.XPATH, available_quantity_selector))
-                        available_quantity = int(available_quantity_text) if available_quantity_text.isdigit() else 0
-                        quantity_to_purchase = max(0, quantity_needed - available_quantity)
-                    if not available_course or available_quantity < quantity_needed:
-                        logger.warning(f"Course {product_code} not available in eCards inventory or insufficient quantity (Needed: {str(quantity_needed)}, Available: {str(available_quantity)})")
-                        quantity_required.append({"sku": product_code, "qty": quantity_to_purchase if quantity_to_purchase > 0 else quantity_needed})
-                        try:
-                            update_inventory(quantity_required)
-                        except Exception:
-                            logger.exception("Failed to update inventory UI")
-
-                        logger.info(f"Automated purchasing removed. Course {product_code} shortage shown in UI. Skipping order for {name}.")
-                        # Return to order list and skip this order
-                        self.safe_navigate_back()
-                        self.safe_click_back_button()
-                        return False
 
             # Process mixed order assignment (each order individually)
             common_selector_base = "//td[contains(text(), '{}')]/preceding-sibling::td[1]"
@@ -551,6 +552,11 @@ def main():
         return
 
     try:
+        logger.info("Capturing eCards stock before collecting Enrollware orders...")
+        if not processor.refresh_stock_snapshot():
+            logger.error("Could not capture eCards stock snapshot; stopping this run")
+            return
+
         # Login and navigate
         logger.info("Logging into Enrollware...")
         if not login_to_enrollware_and_navigate_to_tc_product_orders(processor.driver):
@@ -621,6 +627,8 @@ def run_every_15_minutes():
 
     while True:
         run_count += 1
+        global quantity_required
+        quantity_required = []
         start = time.time()
         print(f"\n{'='*50}")
         print(f"SCHEDULED RUN #{run_count}")

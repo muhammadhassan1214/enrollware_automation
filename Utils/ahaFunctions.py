@@ -458,3 +458,46 @@ def format_name(name: str) -> str:
         return w
 
     return " ".join(smart_cap(word) for word in name.split())
+
+
+def get_stock_info(driver) -> dict[str, int]:
+    """Get stock information from the inventory page, keyed by product code."""
+    stock_info = {}
+    try:
+        product_codes = driver.find_elements(*AHAInventoryPage.stock_id(4))
+        product_quantities = driver.find_elements(*AHAInventoryPage.stock_id(3))
+
+        # Get stock information for non-ACLS/PALS courses only
+        for code_element, quantity_element in zip(product_codes, product_quantities):
+            code = code_element.text.strip()
+            quantity = quantity_element.text.strip()
+            quantity_int = int(quantity) if quantity.isdigit() else 0
+            if code and quantity_int > 0:
+                stock_info[code] = quantity_int
+
+        # Get stock information for ACLS/PALS courses
+        courses_to_check = [
+            {"product_code": "25-3000", "name": "ACLS Provider Course"},
+            {"product_code": "25-3006", "name": "PALS Provider Course"}
+        ]
+
+        safe_navigate_to_url(driver, "https://ecards.heart.org/InstructorAssignment")
+
+        for i, course in enumerate(courses_to_check):
+            if i == 0:
+                select_by_text(driver, AssignToInstructorPage.role_select, 'TS Admin')
+            select_by_text(driver, AssignToInstructorPage.course_select, course.get("name", ""))
+            select_by_text(driver, AssignToInstructorPage.training_center_select, 'CPR Suppliers, LLC')
+            select_by_text(driver, AssignToInstructorPage.training_site_select, 'Shell CPR')
+
+            time.sleep(1)
+
+            available_qyt_element = get_element_text(driver, (By.ID, "availQty"), default="0")
+            available_qyt = int(available_qyt_element) if available_qyt_element.isdigit() else 0
+            product_code = course.get("product_code", "")
+            if product_code and available_qyt > 0:
+                stock_info[product_code] = available_qyt
+
+    except Exception as e:
+        logger.error(f"Error retrieving stock information: {e}")
+    return stock_info
