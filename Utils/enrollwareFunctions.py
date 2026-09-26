@@ -13,59 +13,54 @@ from Utils.utils import (
 
 load_dotenv()
 
-def login_to_enrollware_and_navigate_to_tc_product_orders(driver, max_retries: int = 3) -> bool:
+def login_to_enrollware_and_navigate_to_tc_product_orders(driver) -> bool:
     """Login to Enrollware and navigate to TC Product Orders with comprehensive error handling."""
     if not validate_environment_variables():
         return False
 
-    for attempt in range(max_retries):
-        try:
-            if not safe_navigate_to_url(driver, "https://www.enrollware.com/admin/login.aspx?"):
-                continue
+    try:
+        if not safe_navigate_to_url(driver, "https://www.enrollware.com/admin/login.aspx?"):
+            return False
 
+        time.sleep(5)
+
+        # Check if already logged in
+        validation_button = check_element_exists(driver, EnrollwareLoginPage.username_input, timeout=2)
+
+        if validation_button:
+            # Input credentials with validation
+            if not input_element(driver, EnrollwareLoginPage.username_input, os.getenv("ENROLLWARE_USERNAME")):
+                logger.error("Failed to input username")
+                return False
+
+            if not input_element(driver, EnrollwareLoginPage.password_input, os.getenv("ENROLLWARE_PASSWORD")):
+                logger.error("Failed to input password")
+                return False
+
+            # Optional remember me checkbox
+            click_element_by_js(driver, EnrollwareLoginPage.remember_me_checkbox)
+            time.sleep(1)
+
+            if not click_element_by_js(driver, EnrollwareLoginPage.login_button):
+                logger.error("Failed to click login button")
+                return False
+
+            # Wait for login to complete
             time.sleep(5)
 
-            # Check if already logged in
-            validation_button = check_element_exists(driver, EnrollwareLoginPage.login_button, timeout=2)
+            # Verify login success
+            if "admin" in driver.current_url.lower():
+                logger.info("Successfully logged into Enrollware")
+            else:
+                logger.warning("Login may have failed, checking current URL")
+                return False
 
-            if validation_button:
-                # Input credentials with validation
-                if not input_element(driver, EnrollwareLoginPage.username_input, os.getenv("ENROLLWARE_USERNAME")):
-                    logger.error("Failed to input username")
-                    continue
+        # Navigate to TC Product Orders
+        return navigate_to_tc_product_orders(driver)
 
-                if not input_element(driver, EnrollwareLoginPage.password_input, os.getenv("ENROLLWARE_PASSWORD")):
-                    logger.error("Failed to input password")
-                    continue
-
-                # Optional remember me checkbox
-                click_element_by_js(driver, EnrollwareLoginPage.remember_me_checkbox)
-                time.sleep(1)
-
-                if not click_element_by_js(driver, EnrollwareLoginPage.login_button):
-                    logger.error("Failed to click login button")
-                    continue
-
-                # Wait for login to complete
-                time.sleep(5)
-
-                # Verify login success
-                if "admin" in driver.current_url.lower():
-                    logger.info("Successfully logged into Enrollware")
-                else:
-                    logger.warning("Login may have failed, checking current URL")
-                    continue
-
-            # Navigate to TC Product Orders
-            return navigate_to_tc_product_orders(driver)
-
-        except Exception as e:
-            if attempt < max_retries - 1:
-                time.sleep(3)
-                continue
-
-    logger.error("Failed to login to Enrollware after all attempts")
-    return False
+    except Exception as e:
+        logger.error(f"Error during login: {e}")
+        return False
 
 
 def navigate_to_tc_product_orders(driver) -> bool:
