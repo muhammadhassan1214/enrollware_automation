@@ -5,7 +5,7 @@ class EnrollwareLoginPage:
     username_input = (By.ID, "username")
     password_input = (By.ID, "password")
     remember_me_checkbox = (By.ID, "rememberMe")
-    login_button = (By.ID, "login-button")
+    login_button = (By.ID, "loginButton")
 
 class EnrollwareOrderPage:
     show_entries_select = (By.XPATH, "//span[text()= 'Show:']/parent::label/child::select")
